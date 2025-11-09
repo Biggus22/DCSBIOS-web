@@ -1,0 +1,257 @@
+# DCS-BIOS Controller Manager - Web Interface
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+
+Web-based management interface for DCS-BIOS serial controllers on Raspberry Pi. Control all your flight sim panels from any device on your network.
+
+## ✨ Features
+
+- 🌐 **Web Interface** - Access from any device (PC, tablet, phone)
+- 🎮 **Device Management** - Add, configure, and monitor controllers
+- 📊 **Real-time Status** - Live updates every 2 seconds
+- 🔄 **Auto-reconnect** - Handles USB disconnections gracefully
+- ⚙️ **Easy Configuration** - Visual port selection and settings
+- 🚀 **Boot Service** - Optional headless operation
+- 📱 **Mobile Friendly** - Responsive design for all screen sizes
+
+## 🚀 Quick Install
+
+SSH into your Raspberry Pi and run:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash
+```
+
+Then start the interface:
+
+```bash
+cd ~/dcsbios_web
+./start.sh
+```
+
+Open in browser: `http://<raspberry-pi-ip>:5000`
+
+## 📋 Requirements
+
+- Raspberry Pi (any model with USB and network)
+- Raspberry Pi OS (Bullseye or newer)
+- Python 3.9+
+- DCS-BIOS compatible controllers (Arduino, Teensy, etc.)
+- Network connection to DCS PC
+
+## 🎯 How It Works
+
+```
+[DCS World PC] <--UDP--> [Raspberry Pi] <--Serial--> [Controllers]
+     Windows                  Linux                   Arduino/Teensy
+```
+
+The Raspberry Pi acts as a bridge between DCS World and your physical controllers, managing all serial connections and data forwarding via UDP multicast.
+
+## 📖 Documentation
+
+### Quick Start
+
+1. **Install** (one command):
+   ```bash
+   curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash
+   ```
+
+2. **If prompted**, log out and log back in (for serial port permissions)
+
+3. **Start the interface**:
+   ```bash
+   cd ~/dcsbios_web
+   ./start.sh
+   ```
+
+4. **Open browser**: `http://<pi-ip>:5000` (Find IP with `hostname -I`)
+
+5. **First time setup**:
+   - Go to Settings → Set DCS PC IP address
+   - Click "Add Device" → Select USB port → Name it
+   - Click "Start" button
+
+### Daily Usage
+
+**Start the interface:**
+```bash
+cd ~/dcsbios_web
+./start.sh
+```
+
+**Stop the interface:**
+```bash
+cd ~/dcsbios_web
+./stop.sh
+```
+
+**Access from browser:**
+```
+http://<raspberry-pi-ip>:5000
+```
+
+## 🔧 Configuration
+
+### Device Management
+
+- **Add Device**: Automatically detects available USB ports
+- **Enable/Disable**: Toggle devices without removing them
+- **Delete**: Remove devices (must stop manager first)
+- **Monitor**: Real-time connection status for all devices
+
+### Settings
+
+- **DCS PC IP**: IP address of your Windows PC running DCS
+- **Auto-start**: Automatically start manager when accessing web interface
+- **Scheduled Reboot**: Optional daily reboot for long-term stability
+
+### System Controls
+
+- **Boot Service**: Configure automatic startup on Pi boot (headless mode)
+- **Reboot Pi**: Remote reboot capability
+- **USB Power Control**: Emergency USB power off (requires reboot to restore)
+
+## 🌟 Advanced Features
+
+### Running on Boot (Headless Mode)
+
+For hands-free operation:
+
+1. Enable "Auto-start" in Settings
+2. Click "Boot Service" → "Install Service"
+3. Pi will start the manager automatically on boot
+
+**Check service status:**
+```bash
+sudo systemctl status dcsbios.service
+```
+
+**View logs:**
+```bash
+sudo journalctl -u dcsbios.service -f
+```
+
+### Multiple Raspberry Pis
+
+You can run multiple Pis on the same network:
+- Each Pi manages its own set of controllers
+- All connect to the same DCS PC
+- Use different ports if accessing multiple web interfaces simultaneously
+
+### Configuration File
+
+Located at: `~/.dcsbios/config.json`
+
+```json
+{
+  "devices": [
+    {
+      "name": "UFC Panel",
+      "port": "/dev/ttyACM0",
+      "baudrate": 250000,
+      "enabled": true
+    }
+  ],
+  "dcs_pc_ip": "192.168.1.2",
+  "auto_start": false,
+  "scheduled_reboot_time": null
+}
+```
+
+**Backup your configuration:**
+```bash
+cp ~/.dcsbios/config.json ~/dcsbios_config_backup.json
+```
+
+## 🛠️ Troubleshooting
+
+### Can't Access Web Interface
+
+**Check if it's running:**
+```bash
+ps aux | grep dcsbios_web
+```
+
+**Check Pi's IP address:**
+```bash
+hostname -I
+```
+
+**Restart the interface:**
+```bash
+cd ~/dcsbios_web
+./stop.sh
+./start.sh
+```
+
+### Serial Port Permission Errors
+
+If you see "Permission denied" errors:
+
+```bash
+# Check if you're in the dialout group
+groups
+
+# If not listed, you need to log out and log back in
+exit
+# Then SSH back in
+```
+
+### Devices Won't Connect
+
+1. **Check USB cable** - Try a different cable
+2. **Check baudrate** - Most DCS-BIOS devices use 250000
+3. **Check device** - Does it work when connected to Windows?
+4. **Check power** - May need powered USB hub for many devices
+
+### DCS Not Receiving Data
+
+1. **Check DCS PC IP** - Must be correct in Settings
+2. **Check network** - Ping the DCS PC: `ping <dcs-pc-ip>`
+3. **Check DCS-BIOS Export.lua** - Must be installed in DCS
+4. **Check Windows firewall** - May need to allow UDP port 7778
+
+## 🔒 Security Notes
+
+- The web interface has **no authentication** by default
+- Only use on trusted local networks
+- Don't expose to the internet without proper security (VPN recommended)
+- The interface requires `sudo` privileges for system operations (reboot, USB control)
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- **DCS-BIOS Project** - Original protocol and Arduino libraries
+- **DCS Community** - Testing and feedback
+- **Hoggit Discord** - Support and suggestions
+
+## 📧 Support
+
+- **Issues**: [GitHub Issues](https://github.com/Biggus22/DCSBIOS-web/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Biggus22/DCSBIOS-web/discussions)
+
+## 🔗 Related Projects
+
+- [DCS-BIOS](https://github.com/DCSFlightpanels/dcs-bios) - Original DCS-BIOS project
+- [DCS-BIOS Arduino Library](https://github.com/DCSFlightpanels/dcs-bios-arduino-library)
+
+---
+
+**Made with ❤️ for the DCS community**
+
+If this project helps you, please consider giving it a star! ⭐
