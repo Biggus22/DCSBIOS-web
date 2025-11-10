@@ -66,7 +66,7 @@ run_command "sudo apt update" "Package list update"
 # Install required dependencies
 echo
 echo "[2/9] Installing required dependencies..."
-run_command "sudo apt install -y python3 python3-pip python3-venv git curl" "Dependency installation"
+run_command "sudo apt install -y python3 python3-pip python3-venv git curl uhubctl" "Dependency installation"
 
 # Check if user is in dialout group (needed for serial port access)
 echo
