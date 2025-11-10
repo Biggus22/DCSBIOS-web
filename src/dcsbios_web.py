@@ -92,6 +92,7 @@ class DCSBIOSWebManager:
                     self.dcs_pc_ip = data.get("dcs_pc_ip", self.dcs_pc_ip)
                     self.auto_start = data.get("auto_start", False)
                     self.scheduled_reboot_time = data.get("scheduled_reboot_time", None)
+                    self.web_port = data.get("web_port", self.web_port)
                 self.add_message(f"Loaded {len(self.devices)} devices from config")
             except Exception as e:
                 self.add_message(f"Error loading config: {e}")
@@ -104,7 +105,8 @@ class DCSBIOSWebManager:
                 "devices": [d.to_dict() for d in self.devices],
                 "dcs_pc_ip": self.dcs_pc_ip,
                 "auto_start": self.auto_start,
-                "scheduled_reboot_time": self.scheduled_reboot_time
+                "scheduled_reboot_time": self.scheduled_reboot_time,
+                "web_port": self.web_port
             }
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
@@ -298,6 +300,7 @@ def api_status():
         'dcs_pc_ip': manager.dcs_pc_ip,
         'auto_start': manager.auto_start,
         'scheduled_reboot_time': manager.scheduled_reboot_time,
+        'web_port': manager.web_port,
         'devices': [d.to_dict() for d in manager.devices],
         'messages': manager.status_messages[-20:]
     })
@@ -367,6 +370,17 @@ def api_toggle_auto_start():
     manager.save_config()
     manager.add_message(f"Auto-start {'enabled' if manager.auto_start else 'disabled'}")
     return jsonify({'success': True, 'auto_start': manager.auto_start})
+
+@app.route('/api/settings/web_port', methods=['POST'])
+def api_set_web_port():
+    data = request.json
+    new_port = data.get('port')
+    if new_port and isinstance(new_port, int) and 1 <= new_port <= 65535:
+        manager.web_port = new_port
+        manager.save_config()
+        manager.add_message(f"Web interface port set to: {new_port}")
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'Invalid port number. Must be between 1 and 65535'})
 
 @app.route('/api/settings/schedule_reboot', methods=['POST'])
 def api_schedule_reboot():

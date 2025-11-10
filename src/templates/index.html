@@ -259,7 +259,7 @@
             color: #1e3c72;
         }
 
-        input[type="text"], input[type="time"] {
+        input[type="text"], input[type="number"], input[type="time"] {
             width: 100%;
             padding: 8px;
             border: 1px solid #ddd;
@@ -409,6 +409,28 @@
             padding: 20px;
             color: #666;
         }
+
+        /* Custom time input for better cross-browser support */
+        .time-input-container {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .time-input-container input {
+            width: auto;
+        }
+
+        .time-input-container input.hour, .time-input-container input.minute {
+            width: 60px;
+            text-align: center;
+        }
+
+        .time-input-container label {
+            display: inline;
+            margin: 0 5px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -452,7 +474,13 @@
                             <input type="text" id="dcsIpInput" placeholder="192.168.1.2">
                             <button class="btn-primary btn-small" style="margin-top: 8px;" id="saveDcsIpBtn">Save</button>
                         </div>
-                        
+
+                        <div class="setting-item">
+                            <div class="setting-label">Web Interface Port</div>
+                            <input type="number" id="webPortInput" min="1" max="65535" placeholder="5000" value="5000">
+                            <button class="btn-primary btn-small" style="margin-top: 8px;" id="saveWebPortBtn">Save</button>
+                        </div>
+
                         <div class="setting-item">
                             <div class="setting-label">Auto-start Manager on Boot</div>
                             <label class="toggle-switch">
@@ -463,7 +491,11 @@
 
                         <div class="setting-item">
                             <div class="setting-label">Scheduled Reboot</div>
-                            <input type="time" id="rebootTimeInput" value="">
+                            <div class="time-input-container">
+                                <input type="number" class="hour" id="rebootHourInput" min="0" max="23" placeholder="HH" value="00">
+                                <label>:</label>
+                                <input type="number" class="minute" id="rebootMinuteInput" min="0" max="59" placeholder="MM" value="00">
+                            </div>
                             <div style="display: flex; gap: 8px; margin-top: 8px;">
                                 <button class="btn-primary btn-small" id="saveRebootBtn">Set</button>
                                 <button class="btn-secondary btn-small" id="clearRebootBtn">Clear</button>
@@ -540,6 +572,11 @@
     <script>
         let selectedPort = null;
         let updateInterval = null;
+        // Configuration object to store settings
+        let config = {
+            updateInterval: 2000, // Default refresh rate
+            webPort: 5000 // Default web interface port
+        };
 
         // Update status
         async function updateStatus() {
@@ -562,6 +599,9 @@
                 document.getElementById('dcsIp').textContent = data.dcs_pc_ip;
                 document.getElementById('dcsIpInput').value = data.dcs_pc_ip;
 
+                // Update web port from API response
+                document.getElementById('webPortInput').value = data.web_port || 5000;
+
                 // Update auto-start
                 document.getElementById('autoStartStatus').textContent = data.auto_start ? 'Enabled' : 'Disabled';
                 document.getElementById('autoStartToggle').checked = data.auto_start;
@@ -569,11 +609,15 @@
                 // Update scheduled reboot
                 const rebootSchedule = document.getElementById('rebootSchedule');
                 if (data.scheduled_reboot_time) {
+                    // Parse the time value to set the hour and minute inputs
+                    const [hours, minutes] = data.scheduled_reboot_time.split(':');
+                    document.getElementById('rebootHourInput').value = hours;
+                    document.getElementById('rebootMinuteInput').value = minutes;
                     rebootSchedule.textContent = `Reboot scheduled for ${data.scheduled_reboot_time}`;
-                    document.getElementById('rebootTimeInput').value = data.scheduled_reboot_time;
                 } else {
+                    document.getElementById('rebootHourInput').value = '00';
+                    document.getElementById('rebootMinuteInput').value = '00';
                     rebootSchedule.textContent = 'No reboot scheduled';
-                    document.getElementById('rebootTimeInput').value = '';
                 }
 
                 // Update device list
@@ -594,7 +638,7 @@
                                 </div>
                             </div>
                             <div class="device-actions">
-                                <button class="btn-small ${device.enabled ? 'btn-warning' : 'btn-success'}" 
+                                <button class="btn-small ${device.enabled ? 'btn-warning' : 'btn-success'}"
                                         onclick="toggleDevice(${index})">
                                     ${device.enabled ? 'Disable' : 'Enable'}
                                 </button>
@@ -611,7 +655,7 @@
                 if (data.messages.length === 0) {
                     messagesBox.innerHTML = '<div class="message">No messages yet.</div>';
                 } else {
-                    messagesBox.innerHTML = data.messages.map(msg => 
+                    messagesBox.innerHTML = data.messages.map(msg =>
                         `<div class="message">${msg}</div>`
                     ).join('');
                     messagesBox.scrollTop = messagesBox.scrollHeight;
@@ -668,17 +712,17 @@
         document.getElementById('addDeviceBtn').addEventListener('click', async () => {
             const modal = document.getElementById('addDeviceModal');
             modal.style.display = 'block';
-            
+
             // Load available ports
             const response = await fetch('/api/ports');
             const data = await response.json();
             const portList = document.getElementById('portList');
-            
+
             if (data.ports.length === 0) {
                 portList.innerHTML = '<div class="loading">No serial ports detected</div>';
             } else {
                 portList.innerHTML = data.ports.map(port => `
-                    <div class="port-item ${port.status === 'configured' ? 'configured' : ''}" 
+                    <div class="port-item ${port.status === 'configured' ? 'configured' : ''}"
                          onclick="selectPort('${port.port}', ${port.status === 'configured'})">
                         <strong>${port.port}</strong>
                         <span class="badge badge-${port.status}">${port.status.toUpperCase()}</span>
@@ -687,13 +731,13 @@
                     </div>
                 `).join('');
             }
-            
+
             selectedPort = null;
         });
 
         function selectPort(port, configured) {
             if (configured) return;
-            
+
             selectedPort = port;
             document.querySelectorAll('.port-item').forEach(item => {
                 item.classList.remove('selected');
@@ -708,23 +752,23 @@
         document.getElementById('confirmAddBtn').addEventListener('click', async () => {
             const name = document.getElementById('deviceNameInput').value.trim();
             const baudrate = parseInt(document.getElementById('baudrateInput').value);
-            
+
             if (!selectedPort) {
                 alert('Please select a port');
                 return;
             }
-            
+
             if (!name) {
                 alert('Please enter a device name');
                 return;
             }
-            
+
             const response = await fetch('/api/device/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, port: selectedPort, baudrate })
             });
-            
+
             const data = await response.json();
             if (data.success) {
                 document.getElementById('addDeviceModal').style.display = 'none';
@@ -750,19 +794,55 @@
             }
         });
 
+        // Save Web Port
+        document.getElementById('saveWebPortBtn').addEventListener('click', async () => {
+            const port = parseInt(document.getElementById('webPortInput').value);
+            if (!port || port < 1 || port > 65535) {
+                alert('Please enter a valid port number (1-65535)');
+                return;
+            }
+            
+            const response = await fetch('/api/settings/web_port', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ port })
+            });
+            const data = await response.json();
+            if (data.success) {
+                config.webPort = port;
+                await updateStatus();
+                alert(`Web interface port saved as ${port}. Note: Server restart required to apply the new port.`);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+
         // Toggle auto-start
         document.getElementById('autoStartToggle').addEventListener('change', async () => {
             const response = await fetch('/api/settings/auto_start', { method: 'POST' });
             await updateStatus();
         });
 
-        // Schedule reboot
+        // Schedule reboot - now using separate hour and minute inputs
         document.getElementById('saveRebootBtn').addEventListener('click', async () => {
-            const time = document.getElementById('rebootTimeInput').value;
-            if (!time) {
-                alert('Please select a time');
+            const hour = document.getElementById('rebootHourInput').value;
+            const minute = document.getElementById('rebootMinuteInput').value;
+
+            if (!hour || !minute || hour === '' || minute === '') {
+                alert('Please enter both hour and minute values');
                 return;
             }
+
+            // Validate hour and minute
+            const h = parseInt(hour);
+            const m = parseInt(minute);
+            if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+                alert('Please enter a valid time (hour 0-23, minute 0-59)');
+                return;
+            }
+
+            // Format time as HH:MM
+            const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
             
             const response = await fetch('/api/settings/schedule_reboot', {
                 method: 'POST',
@@ -810,7 +890,7 @@
         document.getElementById('bootServiceBtn').addEventListener('click', async () => {
             const modal = document.getElementById('bootServiceModal');
             modal.style.display = 'block';
-            
+
             const response = await fetch('/api/boot_service/status');
             const data = await response.json();
             const statusText = document.getElementById('bootServiceStatus');
@@ -878,7 +958,7 @@
 
         // Initial update and start polling
         updateStatus();
-        updateInterval = setInterval(updateStatus, 2000);
+        updateInterval = setInterval(updateStatus, config.updateInterval);
     </script>
 </body>
 </html>

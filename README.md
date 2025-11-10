@@ -23,14 +23,22 @@ SSH into your Raspberry Pi and run:
 curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash
 ```
 
-Then start the interface:
+The installation will automatically:
+- Install all required dependencies
+- Set up the Python virtual environment
+- Configure the application
+- Create and enable a systemd service for auto-start on boot
 
-```bash
-cd ~/dcsbios_web
-./start.sh
-```
-
+After installation, the interface will be accessible immediately:
 Open in browser: `http://<raspberry-pi-ip>:5000`
+
+To manually control the service:
+```bash
+sudo systemctl start dcsbios.service    # Start
+sudo systemctl stop dcsbios.service     # Stop  
+sudo systemctl status dcsbios.service   # Check status
+sudo systemctl disable dcsbios.service  # Disable auto-start
+```
 
 ## 📋 Requirements
 
@@ -57,34 +65,36 @@ The Raspberry Pi acts as a bridge between DCS World and your physical controller
    ```bash
    curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash
    ```
+   The installation automatically sets up a systemd service that starts the interface on boot.
 
 2. **If prompted**, log out and log back in (for serial port permissions)
 
-3. **Start the interface**:
-   ```bash
-   cd ~/dcsbios_web
-   ./start.sh
-   ```
+3. **Open browser**: `http://<pi-ip>:5000` (Find IP with `hostname -I`)
 
-4. **Open browser**: `http://<pi-ip>:5000` (Find IP with `hostname -I`)
-
-5. **First time setup**:
+4. **First time setup**:
    - Go to Settings → Set DCS PC IP address
    - Click "Add Device" → Select USB port → Name it
    - Click "Start" button
 
+The interface is now configured to start automatically when your Raspberry Pi boots up.
+
 ### Daily Usage
 
-**Start the interface:**
+The interface starts automatically when the Raspberry Pi boots up. To manually control it:
+
+**Start the service:**
 ```bash
-cd ~/dcsbios_web
-./start.sh
+sudo systemctl start dcsbios.service
 ```
 
-**Stop the interface:**
+**Stop the service:**
 ```bash
-cd ~/dcsbios_web
-./stop.sh
+sudo systemctl stop dcsbios.service
+```
+
+**Check service status:**
+```bash
+sudo systemctl status dcsbios.service
 ```
 
 **Access from browser:**
@@ -119,9 +129,11 @@ http://<raspberry-pi-ip>:5000
 
 For hands-free operation:
 
-1. Enable "Auto-start" in Settings
-2. Click "Boot Service" → "Install Service"
-3. Pi will start the manager automatically on boot
+The systemd service is automatically configured during installation to start the manager on boot.
+To disable this behavior:
+```bash
+sudo systemctl disable dcsbios.service
+```
 
 **Check service status:**
 ```bash

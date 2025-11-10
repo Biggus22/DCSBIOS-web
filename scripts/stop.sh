@@ -1,2 +1,2 @@
 #!/bin/bash
-pkill -f "python.*dcsbios_web.py"
+pkill -f "python.*src/dcsbios_web.py"
