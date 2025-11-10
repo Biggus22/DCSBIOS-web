@@ -572,6 +572,7 @@
     <script>
         let selectedPort = null;
         let updateInterval = null;
+        let isInputActive = false;  // Flag to track if any input field is active
         // Configuration object to store settings
         let config = {
             updateInterval: 2000, // Default refresh rate
@@ -580,6 +581,11 @@
 
         // Update status
         async function updateStatus() {
+            // Only update if no input field is active
+            if (isInputActive) {
+                return;
+            }
+            
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
@@ -955,6 +961,30 @@
                 event.target.style.display = 'none';
             }
         }
+
+        // Function to set input active state
+        function setInputActive(active) {
+            isInputActive = active;
+        }
+
+        // Add event listeners to all input fields to pause/resume UI updates
+        document.getElementById('dcsIpInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('dcsIpInput').addEventListener('blur', () => setInputActive(false));
+        
+        document.getElementById('webPortInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('webPortInput').addEventListener('blur', () => setInputActive(false));
+        
+        document.getElementById('rebootHourInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('rebootHourInput').addEventListener('blur', () => setInputActive(false));
+        
+        document.getElementById('rebootMinuteInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('rebootMinuteInput').addEventListener('blur', () => setInputActive(false));
+        
+        document.getElementById('deviceNameInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('deviceNameInput').addEventListener('blur', () => setInputActive(false));
+        
+        document.getElementById('baudrateInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('baudrateInput').addEventListener('blur', () => setInputActive(false));
 
         // Initial update and start polling
         updateStatus();
