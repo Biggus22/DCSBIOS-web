@@ -160,7 +160,7 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$INSTALL_DIR/src
-ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/src/dcsbios_web.py --host=0.0.0.0 --port=5000
+ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/src/dcsbios_web.py --host=0.0.0.0
 Restart=on-failure
 RestartSec=5
 

@@ -288,6 +288,7 @@ reboot_thread.start()
 # Auto-start if enabled
 if manager.auto_start:
     manager.start()
+    print(f"Auto-start enabled: Manager started automatically as configured")
 
 # Web Routes
 @app.route('/')
@@ -602,9 +603,13 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='DCS-BIOS Web Interface')
     parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
-    parser.add_argument('--port', type=int, default=5000, help='Port to bind to')
+    parser.add_argument('--port', type=int, help='Port to bind to (defaults to value in config file)')
     parser.add_argument('--headless', action='store_true', help='Run in headless mode (for systemd)')
     args = parser.parse_args()
+
+    # Use port from config if not explicitly provided via command line
+    if args.port is None:
+        args.port = manager.web_port
 
     print(f"DCS-BIOS Web Interface")
     print(f"Config location: {CONFIG_FILE}")
