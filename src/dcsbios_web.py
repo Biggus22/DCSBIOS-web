@@ -35,7 +35,7 @@ class DeviceConfig:
         self.enabled = enabled
         self.status = "Stopped"
         self.last_activity = None
-    
+
     def to_dict(self):
         return {
             "name": self.name,
@@ -45,7 +45,7 @@ class DeviceConfig:
             "status": self.status,
             "last_activity": self.last_activity
         }
-    
+
     @staticmethod
     def from_dict(data):
         return DeviceConfig(
@@ -64,25 +64,26 @@ class DCSBIOSWebManager:
         self.udp_sock = None
         self.status_messages = []
         self.max_messages = 50
-        
+
         # DCS-BIOS Configuration
         self.dcs_pc_ip = "192.168.1.2"
         self.udp_ip = "0.0.0.0"
         self.udp_port = 5010
         self.udp_dest_port = 7778
         self.multicast_group = "239.255.50.10"
-        
+
         self.auto_start = False
         self.scheduled_reboot_time = None
-        
+        self.web_port = 5000  # Default web interface port
+
         self.load_config()
-    
+
     def add_message(self, msg: str):
         timestamp = time.strftime("%H:%M:%S")
         self.status_messages.append(f"[{timestamp}] {msg}")
         if len(self.status_messages) > self.max_messages:
             self.status_messages.pop(0)
-    
+
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
             try:
@@ -98,7 +99,7 @@ class DCSBIOSWebManager:
                 self.add_message(f"Error loading config: {e}")
         else:
             self.add_message("No config file found, starting fresh")
-    
+
     def save_config(self):
         try:
             data = {
@@ -113,36 +114,36 @@ class DCSBIOSWebManager:
             self.add_message(f"Config saved")
         except Exception as e:
             self.add_message(f"Error saving config: {e}")
-    
+
     def setup_udp(self):
         try:
             self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
             self.udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.udp_sock.bind((self.udp_ip, self.udp_port))
-            
+
             mreq = struct.pack("=4sl", socket.inet_aton(self.multicast_group), socket.INADDR_ANY)
             self.udp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
             self.add_message(f"UDP socket listening on port {self.udp_port}")
         except Exception as e:
             self.add_message(f"UDP setup error: {e}")
-    
+
     def is_dcsbios_export_packet(self, data):
         return len(data) >= 4 and data[0] == 0x55 and data[1] == 0x55 and data[2] == 0x55 and data[3] == 0x55
-    
+
     def serial_to_udp(self, device: DeviceConfig):
         if not device.enabled:
             return
-        
+
         ser = None
         device.status = "Connecting"
-        
+
         while self.running:
             try:
                 if ser is None or not ser.is_open:
                     ser = serial.Serial(device.port, device.baudrate, timeout=0.1)
                     device.status = "Connected"
                     self.add_message(f"{device.name} connected on {device.port}")
-                
+
                 if ser.in_waiting:
                     data = ser.read(ser.in_waiting)
                     if data:
@@ -151,7 +152,7 @@ class DCSBIOSWebManager:
                         device.last_activity = time.time()
                 else:
                     time.sleep(0.005)
-                    
+
             except (serial.SerialException, PermissionError) as e:
                 device.status = "Error"
                 if ser and ser.is_open:
@@ -164,17 +165,17 @@ class DCSBIOSWebManager:
             except Exception as e:
                 device.status = "Error"
                 time.sleep(5)
-        
+
         if ser and ser.is_open:
             try:
                 ser.close()
             except:
                 pass
         device.status = "Stopped"
-    
+
     def udp_to_serial(self):
         self.active_serial_ports = []
-        
+
         for device in self.devices:
             if device.enabled:
                 try:
@@ -187,17 +188,17 @@ class DCSBIOSWebManager:
                     self.add_message(f"Opened {device.name} for UDP forwarding")
                 except Exception as e:
                     self.add_message(f"Could not open {device.name}: {e}")
-        
+
         while self.running:
             try:
                 data, addr = self.udp_sock.recvfrom(1024)
-                
+
                 if addr[0] != self.dcs_pc_ip:
                     continue
-                
+
                 if not self.is_dcsbios_export_packet(data):
                     continue
-                
+
                 for entry in self.active_serial_ports:
                     ser = entry["port"]
                     device = entry["device"]
@@ -207,42 +208,42 @@ class DCSBIOSWebManager:
                             device.last_activity = time.time()
                         except Exception:
                             pass
-                            
+
             except Exception as e:
                 time.sleep(1)
-        
+
         for entry in self.active_serial_ports:
             if entry["port"] and entry["port"].is_open:
                 try:
                     entry["port"].close()
                 except:
                     pass
-    
+
     def start(self):
         if self.running:
             self.add_message("Already running!")
             return False
-        
+
         self.running = True
         self.setup_udp()
-        
+
         udp_thread = threading.Thread(target=self.udp_to_serial, daemon=True)
         udp_thread.start()
         self.threads.append(udp_thread)
-        
+
         for device in self.devices:
             if device.enabled:
                 thread = threading.Thread(target=self.serial_to_udp, args=(device,), daemon=True)
                 thread.start()
                 self.threads.append(thread)
-        
+
         self.add_message("DCS-BIOS manager started")
         return True
-    
+
     def stop(self):
         if not self.running:
             return False
-            
+
         self.running = False
         self.add_message("Stopping DCS-BIOS manager...")
         time.sleep(1)
@@ -331,7 +332,7 @@ def api_add_device():
     name = data.get('name')
     port = data.get('port')
     baudrate = data.get('baudrate', 250000)
-    
+
     if name and port:
         new_device = DeviceConfig(name, port, baudrate, True)
         manager.devices.append(new_device)
@@ -346,7 +347,7 @@ def api_delete_device(index):
         device = manager.devices[index]
         if manager.running and device.enabled:
             return jsonify({'success': False, 'error': 'Stop manager first or disable device'})
-        
+
         manager.devices.pop(index)
         manager.save_config()
         manager.add_message(f"Deleted device: {device.name}")
@@ -386,13 +387,13 @@ def api_set_web_port():
 def api_schedule_reboot():
     data = request.json
     time_str = data.get('time')
-    
+
     if time_str == "clear":
         manager.scheduled_reboot_time = None
         manager.save_config()
         manager.add_message("Scheduled reboot cleared")
         return jsonify({'success': True})
-    
+
     # Validate time format
     if time_str and len(time_str) == 5 and time_str[2] == ':':
         try:
@@ -405,7 +406,7 @@ def api_schedule_reboot():
                 return jsonify({'success': True})
         except:
             pass
-    
+
     return jsonify({'success': False, 'error': 'Invalid time format. Use HH:MM'})
 
 @app.route('/api/usb/off', methods=['POST'])
@@ -413,7 +414,7 @@ def api_usb_off():
     if manager.running:
         manager.stop()
         time.sleep(1)
-    
+
     try:
         result = subprocess.run(
             ["sudo", "uhubctl", "-l", "1-1", "-p", "2", "-a", "0"],
@@ -439,14 +440,14 @@ def api_reboot():
 def api_list_ports():
     ports = []
     patterns = ['/dev/ttyACM*', '/dev/ttyUSB*', '/dev/ttyAMA*', '/dev/ttyS*']
-    
+
     all_ports = []
     for pattern in patterns:
         all_ports.extend(glob.glob(pattern))
     all_ports.sort()
-    
+
     configured_ports = {device.port for device in manager.devices}
-    
+
     for port in all_ports:
         status = "configured" if port in configured_ports else "available"
         info = get_port_info(port)
@@ -455,7 +456,7 @@ def api_list_ports():
             'info': info,
             'status': status
         })
-    
+
     return jsonify({'ports': ports})
 
 def get_port_info(port):
@@ -465,18 +466,18 @@ def get_port_info(port):
             ['udevadm', 'info', '-q', 'property', '-n', port],
             capture_output=True, text=True, timeout=2
         )
-        
+
         if result.returncode == 0:
             props = {}
             for line in result.stdout.split('\n'):
                 if '=' in line:
                     key, value = line.split('=', 1)
                     props[key] = value
-            
+
             vendor = props.get('ID_VENDOR', '')
             model = props.get('ID_MODEL', '')
             serial = props.get('ID_SERIAL_SHORT', '')
-            
+
             if vendor and model:
                 info = f"{vendor} {model}"
                 if serial:
@@ -484,7 +485,7 @@ def get_port_info(port):
                 return info
     except:
         pass
-    
+
     if 'ACM' in port:
         return "USB CDC ACM Device"
     elif 'USB' in port:
@@ -512,7 +513,7 @@ def api_boot_service_status():
 def api_boot_service_install():
     if not manager.auto_start:
         return jsonify({'success': False, 'error': 'Enable auto-start first'})
-    
+
     script_path = os.path.abspath(__file__)
     service_content = f"""[Unit]
 Description=DCS-BIOS Controller Manager Web
@@ -529,17 +530,17 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 """
-    
+
     try:
         service_file = "/tmp/dcsbios.service"
         with open(service_file, 'w') as f:
             f.write(service_content)
-        
+
         result = subprocess.run(
             ["sudo", "cp", service_file, "/etc/systemd/system/dcsbios.service"],
             capture_output=True, text=True
         )
-        
+
         if result.returncode == 0:
             subprocess.run(["sudo", "systemctl", "daemon-reload"])
             subprocess.run(["sudo", "systemctl", "enable", "dcsbios.service"])
@@ -588,7 +589,7 @@ def api_boot_service_uninstall():
             capture_output=True, text=True
         )
         subprocess.run(["sudo", "systemctl", "daemon-reload"])
-        
+
         if result.returncode == 0:
             manager.add_message("Boot service uninstalled")
             return jsonify({'success': True})
@@ -598,17 +599,17 @@ def api_boot_service_uninstall():
 
 if __name__ == '__main__':
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='DCS-BIOS Web Interface')
     parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
     parser.add_argument('--port', type=int, default=5000, help='Port to bind to')
     parser.add_argument('--headless', action='store_true', help='Run in headless mode (for systemd)')
     args = parser.parse_args()
-    
+
     print(f"DCS-BIOS Web Interface")
     print(f"Config location: {CONFIG_FILE}")
     print(f"Starting web server on http://{args.host}:{args.port}")
     print(f"Access from your network at http://<raspberry-pi-ip>:{args.port}")
     print()
-    
+
     app.run(host=args.host, port=args.port, debug=False, threaded=True)
