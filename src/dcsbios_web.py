@@ -95,6 +95,10 @@ class DCSBIOSWebManager:
                     self.scheduled_reboot_time = data.get("scheduled_reboot_time", None)
                     self.web_port = data.get("web_port", self.web_port)
                 self.add_message(f"Loaded {len(self.devices)} devices from config")
+                self.add_message(f"DCS PC IP: {self.dcs_pc_ip}")
+                self.add_message(f"Auto start: {self.auto_start}")
+                self.add_message(f"Scheduled reboot time: {self.scheduled_reboot_time}")
+                self.add_message(f"Web port: {self.web_port}")
             except Exception as e:
                 self.add_message(f"Error loading config: {e}")
         else:
@@ -111,7 +115,7 @@ class DCSBIOSWebManager:
             }
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
-            self.add_message(f"Config saved")
+            self.add_message(f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}")
         except Exception as e:
             self.add_message(f"Error saving config: {e}")
 
