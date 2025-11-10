@@ -421,15 +421,33 @@ def api_usb_off():
         time.sleep(1)
 
     try:
+        # First, check what USB hubs are available
+        hubs_result = subprocess.run(
+            ["sudo", "uhubctl"],
+            capture_output=True, text=True, timeout=5
+        )
+        manager.add_message(f"Available USB hubs: {hubs_result.stdout}")
+        
+        # Attempt the USB power off command
         result = subprocess.run(
             ["sudo", "uhubctl", "-l", "1-1", "-p", "2", "-a", "0"],
             capture_output=True, text=True, timeout=5
         )
-        manager.add_message("USB Port 2: OFF - REBOOT REQUIRED")
-        return jsonify({'success': True})
+        
+        manager.add_message(f"USB command result: {result.returncode}, stdout: {result.stdout}, stderr: {result.stderr}")
+        
+        if result.returncode == 0:
+            manager.add_message("USB Port 2: OFF - REBOOT REQUIRED")
+            return jsonify({'success': True})
+        else:
+            manager.add_message(f"USB command failed: {result.stderr}")
+            return jsonify({'success': False, 'error': f'Command failed: {result.stderr}'})
+            
     except FileNotFoundError:
+        manager.add_message("Error: uhubctl not installed")
         return jsonify({'success': False, 'error': 'uhubctl not installed'})
     except Exception as e:
+        manager.add_message(f"Error in USB OFF: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/reboot', methods=['POST'])
