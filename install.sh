@@ -99,15 +99,15 @@ if [ -d ".git" ] && [ -d "src" ] && [ -d "scripts" ]; then
         echo "[WARNING] requirements.txt not found in current directory"
     fi
 else
-    echo "[INFO] Cloning repository from GitHub..."
+    echo "[INFO] Cloning repository from GitHub dev branch..."
     if [ -d "$INSTALL_DIR/.git" ]; then
         # Update existing installation
         echo "[INFO] Repository already exists, updating..."
         cd "$INSTALL_DIR"
-        run_command "git pull origin main" "Updating existing repository"
+        run_command "git fetch origin && git checkout dev && git pull origin dev" "Updating existing repository from dev branch"
     else
-        # Fresh installation
-        run_command "git clone https://github.com/Biggus22/DCSBIOS-web.git '$INSTALL_DIR'" "Cloning repository"
+        # Fresh installation from dev branch
+        run_command "git clone -b dev --single-branch https://github.com/Biggus22/DCSBIOS-web.git '$INSTALL_DIR'" "Cloning repository from dev branch"
     fi
 fi
 
