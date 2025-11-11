@@ -509,7 +509,6 @@
                     <h2>🔧 System</h2>
                     <div class="control-buttons">
                         <button class="btn-warning" id="bootServiceBtn">Boot Service</button>
-                        <button class="btn-danger" id="usbOffBtn">USB OFF</button>
                         <button class="btn-danger" id="rebootBtn">Reboot Pi</button>
                     </div>
                 </div>
@@ -886,17 +885,6 @@
             await updateStatus();
         });
 
-        // USB OFF
-        document.getElementById('usbOffBtn').addEventListener('click', async () => {
-            if (confirm('WARNING: Turning USB OFF will disable all USB devices until Pi is rebooted!\n\nAre you sure?')) {
-                const response = await fetch('/api/usb/off', { method: 'POST' });
-                const data = await response.json();
-                if (!data.success) {
-                    alert(data.error);
-                }
-                await updateStatus();
-            }
-        });
 
         // Reboot
         document.getElementById('rebootBtn').addEventListener('click', async () => {

@@ -414,66 +414,6 @@ def api_schedule_reboot():
 
     return jsonify({'success': False, 'error': 'Invalid time format. Use HH:MM'})
 
-@app.route('/api/usb/off', methods=['POST'])
-def api_usb_off():
-    if manager.running:
-        manager.stop()
-        time.sleep(1)
-
-    success = False
-    error_msg = ""
-    
-    # Method 1: Try uhubctl with multiple approaches for USB power off
-    try:
-        # First, check what USB hubs are available
-        hubs_result = subprocess.run(
-            ["sudo", "uhubctl"],
-            capture_output=True, text=True, timeout=5
-        )
-        manager.add_message(f"Available USB hubs: {hubs_result.stdout}")
-
-        # Try multiple approaches for USB power off
-        # Based on your successful usage, we'll look for the "0000 off" status which indicates physical power off
-        hub_port_commands = [
-            ["sudo", "uhubctl", "-l", "1-1", "-p", "2", "-a", "0"],  # Target specific port as you did successfully
-            ["sudo", "uhubctl", "-p", "2", "-a", "0"],  # Try without specific hub
-            ["sudo", "uhubctl", "-l", "1-1", "-a", "0"],  # All ports on specific hub
-        ]
-        
-        for cmd in hub_port_commands:
-            manager.add_message(f"Trying command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            
-            manager.add_message(f"Command result: {result.returncode}, stdout: {result.stdout}, stderr: {result.stderr}")
-            
-            # Check if the specific port is actually powered off (look for "0000 off" in output)
-            if result.returncode == 0 and ("0000 off" in result.stdout or "Port 2: 0000 off" in result.stdout):
-                manager.add_message("USB power successfully turned OFF - Physical power cut to port")
-                success = True
-                break
-            elif result.returncode == 0:
-                # Command ran successfully, let's check if we got confirmation of power off in any form
-                if "off" in result.stdout.lower():
-                    manager.add_message("USB command executed - Power may be off") 
-                    success = True  # Consider this as partial success
-                    break
-            else:
-                error_msg = result.stderr
-    
-        if success:
-            manager.add_message("USB power OFF - REBOOT MAY BE REQUIRED for full effect")
-            return jsonify({'success': True})
-        else:
-            manager.add_message(f"All USB power off methods failed: {error_msg}")
-            return jsonify({'success': False, 'error': f'All methods failed: {error_msg}'})
-
-    except FileNotFoundError:
-        manager.add_message("Error: uhubctl not installed")
-        return jsonify({'success': False, 'error': 'uhubctl not installed'})
-    except Exception as e:
-        manager.add_message(f"Error in USB OFF: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/api/reboot', methods=['POST'])
 def api_reboot():
     if manager.running:
