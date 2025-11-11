@@ -66,7 +66,7 @@ run_command "sudo apt update" "Package list update"
 # Install required dependencies
 echo
 echo "[2/9] Installing required dependencies..."
-run_command "sudo apt install -y python3 python3-pip python3-venv git curl" "Dependency installation"
+run_command "sudo apt install -y python3 python3-pip python3-venv git curl uhubctl" "Dependency installation"
 
 # Check if user is in dialout group (needed for serial port access)
 echo
@@ -99,15 +99,15 @@ if [ -d ".git" ] && [ -d "src" ] && [ -d "scripts" ]; then
         echo "[WARNING] requirements.txt not found in current directory"
     fi
 else
-    echo "[INFO] Cloning repository from GitHub..."
+    echo "[INFO] Cloning repository from GitHub dev branch..."
     if [ -d "$INSTALL_DIR/.git" ]; then
         # Update existing installation
         echo "[INFO] Repository already exists, updating..."
         cd "$INSTALL_DIR"
-        run_command "git pull origin main" "Updating existing repository"
+        run_command "git fetch origin && git checkout dev && git pull origin dev" "Updating existing repository from dev branch"
     else
-        # Fresh installation
-        run_command "git clone https://github.com/Biggus22/DCSBIOS-web.git '$INSTALL_DIR'" "Cloning repository"
+        # Fresh installation from dev branch
+        run_command "git clone -b dev --single-branch https://github.com/Biggus22/DCSBIOS-web.git '$INSTALL_DIR'" "Cloning repository from dev branch"
     fi
 fi
 
@@ -160,7 +160,7 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$INSTALL_DIR/src
-ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/src/dcsbios_web.py --host=0.0.0.0 --port=5000
+ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/src/dcsbios_web.py --host=0.0.0.0
 Restart=on-failure
 RestartSec=5
 

@@ -19,8 +19,14 @@ Web-based management interface for DCS-BIOS serial controllers on Raspberry Pi. 
 
 SSH into your Raspberry Pi and run:
 
+### Main Branch (Stable Release)
 ```bash
 curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash
+```
+
+### Dev Branch (Latest Features)
+```bash
+curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/dev/install.sh | bash
 ```
 
 The installation will automatically:
@@ -62,9 +68,17 @@ The Raspberry Pi acts as a bridge between DCS World and your physical controller
 ### Quick Start
 
 1. **Install** (one command):
+
+   **Main Branch (Stable Release):**
    ```bash
    curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash
    ```
+   
+   **Dev Branch (Latest Features):**
+   ```bash
+   curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/dev/install.sh | bash
+   ```
+   
    The installation automatically sets up a systemd service that starts the interface on boot.
 
 2. **If prompted**, log out and log back in (for serial port permissions)

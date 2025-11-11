@@ -95,6 +95,10 @@ class DCSBIOSWebManager:
                     self.scheduled_reboot_time = data.get("scheduled_reboot_time", None)
                     self.web_port = data.get("web_port", self.web_port)
                 self.add_message(f"Loaded {len(self.devices)} devices from config")
+                self.add_message(f"DCS PC IP: {self.dcs_pc_ip}")
+                self.add_message(f"Auto start: {self.auto_start}")
+                self.add_message(f"Scheduled reboot time: {self.scheduled_reboot_time}")
+                self.add_message(f"Web port: {self.web_port}")
             except Exception as e:
                 self.add_message(f"Error loading config: {e}")
         else:
@@ -111,7 +115,7 @@ class DCSBIOSWebManager:
             }
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
-            self.add_message(f"Config saved")
+            self.add_message(f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}")
         except Exception as e:
             self.add_message(f"Error saving config: {e}")
 
@@ -288,6 +292,7 @@ reboot_thread.start()
 # Auto-start if enabled
 if manager.auto_start:
     manager.start()
+    print(f"Auto-start enabled: Manager started automatically as configured")
 
 # Web Routes
 @app.route('/')
@@ -415,16 +420,58 @@ def api_usb_off():
         manager.stop()
         time.sleep(1)
 
+    success = False
+    error_msg = ""
+    
+    # Method 1: Try uhubctl with multiple approaches for USB power off
     try:
-        result = subprocess.run(
-            ["sudo", "uhubctl", "-l", "1-1", "-p", "2", "-a", "0"],
+        # First, check what USB hubs are available
+        hubs_result = subprocess.run(
+            ["sudo", "uhubctl"],
             capture_output=True, text=True, timeout=5
         )
-        manager.add_message("USB Port 2: OFF - REBOOT REQUIRED")
-        return jsonify({'success': True})
+        manager.add_message(f"Available USB hubs: {hubs_result.stdout}")
+
+        # Try multiple approaches for USB power off
+        # Based on your successful usage, we'll look for the "0000 off" status which indicates physical power off
+        hub_port_commands = [
+            ["sudo", "uhubctl", "-l", "1-1", "-p", "2", "-a", "0"],  # Target specific port as you did successfully
+            ["sudo", "uhubctl", "-p", "2", "-a", "0"],  # Try without specific hub
+            ["sudo", "uhubctl", "-l", "1-1", "-a", "0"],  # All ports on specific hub
+        ]
+        
+        for cmd in hub_port_commands:
+            manager.add_message(f"Trying command: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            
+            manager.add_message(f"Command result: {result.returncode}, stdout: {result.stdout}, stderr: {result.stderr}")
+            
+            # Check if the specific port is actually powered off (look for "0000 off" in output)
+            if result.returncode == 0 and ("0000 off" in result.stdout or "Port 2: 0000 off" in result.stdout):
+                manager.add_message("USB power successfully turned OFF - Physical power cut to port")
+                success = True
+                break
+            elif result.returncode == 0:
+                # Command ran successfully, let's check if we got confirmation of power off in any form
+                if "off" in result.stdout.lower():
+                    manager.add_message("USB command executed - Power may be off") 
+                    success = True  # Consider this as partial success
+                    break
+            else:
+                error_msg = result.stderr
+    
+        if success:
+            manager.add_message("USB power OFF - REBOOT MAY BE REQUIRED for full effect")
+            return jsonify({'success': True})
+        else:
+            manager.add_message(f"All USB power off methods failed: {error_msg}")
+            return jsonify({'success': False, 'error': f'All methods failed: {error_msg}'})
+
     except FileNotFoundError:
+        manager.add_message("Error: uhubctl not installed")
         return jsonify({'success': False, 'error': 'uhubctl not installed'})
     except Exception as e:
+        manager.add_message(f"Error in USB OFF: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/reboot', methods=['POST'])
@@ -602,9 +649,13 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='DCS-BIOS Web Interface')
     parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
-    parser.add_argument('--port', type=int, default=5000, help='Port to bind to')
+    parser.add_argument('--port', type=int, help='Port to bind to (defaults to value in config file)')
     parser.add_argument('--headless', action='store_true', help='Run in headless mode (for systemd)')
     args = parser.parse_args()
+
+    # Use port from config if not explicitly provided via command line
+    if args.port is None:
+        args.port = manager.web_port
 
     print(f"DCS-BIOS Web Interface")
     print(f"Config location: {CONFIG_FILE}")
