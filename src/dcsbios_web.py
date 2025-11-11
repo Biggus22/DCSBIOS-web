@@ -70,7 +70,7 @@ class DCSBIOSWebManager:
         self.udp_ip = "0.0.0.0"
         self.udp_port = 5010
         self.udp_dest_port = 7778
-        self.multicast_group = "239.255.50.10"
+        self.multicast_group = "239.255.50.10"  # Multicast group for DCS-BIOS
 
         self.auto_start = False
         self.scheduled_reboot_time = None
@@ -94,11 +94,15 @@ class DCSBIOSWebManager:
                     self.auto_start = data.get("auto_start", False)
                     self.scheduled_reboot_time = data.get("scheduled_reboot_time", None)
                     self.web_port = data.get("web_port", self.web_port)
+                    self.udp_port = data.get("udp_port", self.udp_port)
+                    self.multicast_group = data.get("multicast_group", self.multicast_group)
                 self.add_message(f"Loaded {len(self.devices)} devices from config")
                 self.add_message(f"DCS PC IP: {self.dcs_pc_ip}")
                 self.add_message(f"Auto start: {self.auto_start}")
                 self.add_message(f"Scheduled reboot time: {self.scheduled_reboot_time}")
                 self.add_message(f"Web port: {self.web_port}")
+                self.add_message(f"UDP port: {self.udp_port}")
+                self.add_message(f"Multicast group: {self.multicast_group}")
             except Exception as e:
                 self.add_message(f"Error loading config: {e}")
         else:
@@ -111,11 +115,13 @@ class DCSBIOSWebManager:
                 "dcs_pc_ip": self.dcs_pc_ip,
                 "auto_start": self.auto_start,
                 "scheduled_reboot_time": self.scheduled_reboot_time,
-                "web_port": self.web_port
+                "web_port": self.web_port,
+                "udp_port": self.udp_port,
+                "multicast_group": self.multicast_group
             }
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
-            self.add_message(f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}")
+            self.add_message(f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}")
         except Exception as e:
             self.add_message(f"Error saving config: {e}")
 
@@ -307,6 +313,8 @@ def api_status():
         'auto_start': manager.auto_start,
         'scheduled_reboot_time': manager.scheduled_reboot_time,
         'web_port': manager.web_port,
+        'udp_port': manager.udp_port,
+        'multicast_group': manager.multicast_group,
         'devices': [d.to_dict() for d in manager.devices],
         'messages': manager.status_messages[-20:]
     })
@@ -413,6 +421,51 @@ def api_schedule_reboot():
             pass
 
     return jsonify({'success': False, 'error': 'Invalid time format. Use HH:MM'})
+
+@app.route('/api/settings/multicast', methods=['POST'])
+def api_set_multicast():
+    data = request.json
+    new_group = data.get('multicast_group')
+    new_port = data.get('udp_port')
+
+    success = True
+    error_msg = ""
+    
+    # Validate multicast group (basic validation)
+    if new_group:
+        # Basic check for valid multicast address format
+        import re
+        ip_pattern = r'^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+        if not re.match(ip_pattern, new_group):
+            success = False
+            error_msg = "Invalid multicast group format. Use x.x.x.x format"
+        else:
+            # Check if it's in multicast range (224.0.0.0 to 239.255.255.255)
+            parts = new_group.split('.')
+            if len(parts) == 4:
+                first_octet = int(parts[0]) if parts[0].isdigit() else -1
+                if first_octet < 224 or first_octet > 239:
+                    success = False
+                    error_msg = "Multicast group must be in range 224.0.0.0 to 239.255.255.255"
+    
+    # Validate UDP port
+    if new_port and (not isinstance(new_port, int) or new_port < 1 or new_port > 65535):
+        success = False
+        error_msg = "Invalid UDP port. Must be between 1 and 65535" if not error_msg else error_msg + ", and UDP port must be between 1 and 65535"
+    
+    if success:
+        if new_group:
+            manager.multicast_group = new_group
+        if new_port:
+            manager.udp_port = new_port
+        manager.save_config()
+        if new_group:
+            manager.add_message(f"Multicast group set to: {new_group}")
+        if new_port:
+            manager.add_message(f"UDP port set to: {new_port}")
+        return jsonify({'success': True})
+    else:
+        return jsonify({'success': False, 'error': error_msg})
 
 @app.route('/api/reboot', methods=['POST'])
 def api_reboot():

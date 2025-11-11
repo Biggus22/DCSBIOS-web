@@ -502,6 +502,18 @@
                             </div>
                             <div id="rebootSchedule" style="margin-top: 8px; font-size: 12px; color: #666;"></div>
                         </div>
+                        
+                        <div class="setting-item">
+                            <div class="setting-label">Multicast Group</div>
+                            <input type="text" id="multicastGroupInput" placeholder="239.255.50.10">
+                            <button class="btn-primary btn-small" style="margin-top: 8px;" id="saveMulticastGroupBtn">Save</button>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <div class="setting-label">UDP Port</div>
+                            <input type="number" id="udpPortInput" min="1" max="65535" placeholder="5010" value="5010">
+                            <button class="btn-primary btn-small" style="margin-top: 8px;" id="saveUdpPortBtn">Save</button>
+                        </div>
                     </div>
                 </div>
 
@@ -575,7 +587,9 @@
         // Configuration object to store settings
         let config = {
             updateInterval: 2000, // Default refresh rate
-            webPort: 5000 // Default web interface port
+            webPort: 5000, // Default web interface port
+            udpPort: 5010, // Default UDP port for multicast
+            multicastGroup: '239.255.50.10' // Default multicast group
         };
 
         // Update status
@@ -836,6 +850,65 @@
             }
         });
 
+        // Save Multicast Group
+        document.getElementById('saveMulticastGroupBtn').addEventListener('click', async () => {
+            const multicastGroup = document.getElementById('multicastGroupInput').value.trim();
+            if (!multicastGroup) {
+                alert('Please enter a multicast group address');
+                return;
+            }
+
+            // Basic validation for multicast address format
+            const ipPattern = /^([0-9]{1,3}\.){3}[0-9]{1,3}$/;
+            if (!ipPattern.test(multicastGroup)) {
+                alert('Please enter a valid multicast group address (x.x.x.x format)');
+                return;
+            }
+
+            // Check if it's in multicast range (224.0.0.0 to 239.255.255.255)
+            const parts = multicastGroup.split('.');
+            const firstOctet = parseInt(parts[0]);
+            if (firstOctet < 224 || firstOctet > 239) {
+                alert('Multicast group must be in range 224.0.0.0 to 239.255.255.255');
+                return;
+            }
+
+            const response = await fetch('/api/settings/multicast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ multicast_group: multicastGroup })
+            });
+            const data = await response.json();
+            if (data.success) {
+                await updateStatus();
+                alert(`Multicast group saved as ${multicastGroup}`);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+
+        // Save UDP Port
+        document.getElementById('saveUdpPortBtn').addEventListener('click', async () => {
+            const port = parseInt(document.getElementById('udpPortInput').value);
+            if (!port || port < 1 || port > 65535) {
+                alert('Please enter a valid UDP port number (1-65535)');
+                return;
+            }
+
+            const response = await fetch('/api/settings/multicast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ udp_port: port })
+            });
+            const data = await response.json();
+            if (data.success) {
+                await updateStatus();
+                alert(`UDP port saved as ${port}`);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+
         // Toggle auto-start
         document.getElementById('autoStartToggle').addEventListener('change', async () => {
             const response = await fetch('/api/settings/auto_start', { method: 'POST' });
@@ -988,6 +1061,12 @@
         document.getElementById('baudrateInput').addEventListener('focus', () => setInputActive(true));
         document.getElementById('baudrateInput').addEventListener('blur', () => setInputActive(false));
 
+        document.getElementById('multicastGroupInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('multicastGroupInput').addEventListener('blur', () => setInputActive(false));
+
+        document.getElementById('udpPortInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('udpPortInput').addEventListener('blur', () => setInputActive(false));
+
         // Separate update functions for different sections
         async function updateStatusMessages() {
             // Only update status messages part of the UI
@@ -1043,6 +1122,18 @@
                 // Only update input if not currently being edited
                 if (!document.getElementById('webPortInput').matches(':focus')) {
                     document.getElementById('webPortInput').value = data.web_port || 5000;
+                }
+
+                // Update multicast group from API response
+                // Only update input if not currently being edited
+                if (!document.getElementById('multicastGroupInput').matches(':focus')) {
+                    document.getElementById('multicastGroupInput').value = data.multicast_group || '239.255.50.10';
+                }
+
+                // Update UDP port from API response
+                // Only update input if not currently being edited
+                if (!document.getElementById('udpPortInput').matches(':focus')) {
+                    document.getElementById('udpPortInput').value = data.udp_port || 5010;
                 }
 
                 // Update auto-start
