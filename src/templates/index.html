@@ -1007,7 +1007,7 @@
                 const response = await fetch('/api/status');
                 const data = await response.json();
                 
-                // Update messages only
+                // Update messages only (allow this even when input is active since it shouldn't interfere)
                 const messagesBox = document.getElementById('messagesBox');
                 if (data.messages.length === 0) {
                     messagesBox.innerHTML = '<div class="message">No messages yet.</div>';
@@ -1024,6 +1024,11 @@
 
         async function updateMainUI() {
             // Update the main UI elements that don't change as frequently
+            // Only update if no input field is active to avoid interfering with user input
+            if (isInputActive) {
+                return;
+            }
+            
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
