@@ -433,10 +433,11 @@ def api_usb_off():
         manager.add_message(f"Available USB hubs: {hubs_result.stdout}")
 
         # Try multiple approaches for USB power off
+        # Based on your successful usage, we'll look for the "0000 off" status which indicates physical power off
         hub_port_commands = [
-            ["sudo", "uhubctl", "-l", "1-1", "-p", "2", "-a", "0"],  # Current approach
-            ["sudo", "uhubctl", "-a", "0", "-p", "2"],  # Alternative: Just target port 2
-            ["sudo", "uhubctl", "-a", "0"],  # Turn off all ports
+            ["sudo", "uhubctl", "-l", "1-1", "-p", "2", "-a", "0"],  # Target specific port as you did successfully
+            ["sudo", "uhubctl", "-p", "2", "-a", "0"],  # Try without specific hub
+            ["sudo", "uhubctl", "-l", "1-1", "-a", "0"],  # All ports on specific hub
         ]
         
         for cmd in hub_port_commands:
@@ -445,50 +446,22 @@ def api_usb_off():
             
             manager.add_message(f"Command result: {result.returncode}, stdout: {result.stdout}, stderr: {result.stderr}")
             
-            if result.returncode == 0:
-                manager.add_message("USB power off command executed successfully")
+            # Check if the specific port is actually powered off (look for "0000 off" in output)
+            if result.returncode == 0 and ("0000 off" in result.stdout or "Port 2: 0000 off" in result.stdout):
+                manager.add_message("USB power successfully turned OFF - Physical power cut to port")
                 success = True
                 break
+            elif result.returncode == 0:
+                # Command ran successfully, let's check if we got confirmation of power off in any form
+                if "off" in result.stdout.lower():
+                    manager.add_message("USB command executed - Power may be off") 
+                    success = True  # Consider this as partial success
+                    break
             else:
                 error_msg = result.stderr
     
-        # If uhubctl methods fail, try alternative approaches
-        if not success:
-            manager.add_message("uhubctl methods failed, trying alternative approaches...")
-            
-            # Method 2: Use modprobe to remove USB drivers (more aggressive)
-            try:
-                # Remove USB storage drivers to disconnect devices
-                subprocess.run(["sudo", "modprobe", "-r", "usb-storage"], capture_output=True, timeout=5)
-                manager.add_message("Removed usb-storage module")
-            except:
-                manager.add_message("Could not remove usb-storage module")
-            
-            # Method 3: Try to remove other USB-related modules
-            try:
-                subprocess.run(["sudo", "modprobe", "-r", "usbhid"], capture_output=True, timeout=5)
-                manager.add_message("Removed usbhid module")
-            except:
-                manager.add_message("Could not remove usbhid module")
-                
-            # Method 4: Write directly to USB port power control (if available)
-            try:
-                # Try to find and modify USB power settings in sysfs
-                import glob
-                usb_power_paths = glob.glob("/sys/bus/usb/devices/*/authorized")
-                for path in usb_power_paths:
-                    try:
-                        with open(path, 'w') as f:
-                            f.write('0')  # Unauthorize the USB device
-                        manager.add_message(f"Unauthorized USB device: {path}")
-                        success = True
-                    except Exception as e:
-                        manager.add_message(f"Could not unauthorized USB device {path}: {str(e)}")
-            except:
-                manager.add_message("Could not access USB sysfs power controls")
-        
         if success:
-            manager.add_message("USB power control: Command executed - REBOOT REQUIRED for full effect")
+            manager.add_message("USB power OFF - REBOOT MAY BE REQUIRED for full effect")
             return jsonify({'success': True})
         else:
             manager.add_message(f"All USB power off methods failed: {error_msg}")
