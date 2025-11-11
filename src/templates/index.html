@@ -1000,9 +1000,125 @@
         document.getElementById('baudrateInput').addEventListener('focus', () => setInputActive(true));
         document.getElementById('baudrateInput').addEventListener('blur', () => setInputActive(false));
 
-        // Initial update and start polling
-        updateStatus();
-        updateInterval = setInterval(updateStatus, config.updateInterval);
+        // Separate update functions for different sections
+        async function updateStatusMessages() {
+            // Only update status messages part of the UI
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                // Update messages only
+                const messagesBox = document.getElementById('messagesBox');
+                if (data.messages.length === 0) {
+                    messagesBox.innerHTML = '<div class="message">No messages yet.</div>';
+                } else {
+                    messagesBox.innerHTML = data.messages.map(msg =>
+                        `<div class="message">${msg}</div>`
+                    ).join('');
+                    messagesBox.scrollTop = messagesBox.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Error updating status messages:', error);
+            }
+        }
+
+        async function updateMainUI() {
+            // Update the main UI elements that don't change as frequently
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                // Update status indicator
+                const statusDot = document.getElementById('statusDot');
+                const statusText = document.getElementById('statusText');
+                if (data.running) {
+                    statusDot.className = 'status-dot running';
+                    statusText.textContent = 'RUNNING';
+                } else {
+                    statusDot.className = 'status-dot stopped';
+                    statusText.textContent = 'STOPPED';
+                }
+
+                // Update DCS IP
+                document.getElementById('dcsIp').textContent = data.dcs_pc_ip;
+                // Only update input if not currently being edited
+                if (!document.getElementById('dcsIpInput').matches(':focus')) {
+                    document.getElementById('dcsIpInput').value = data.dcs_pc_ip;
+                }
+
+                // Update web port from API response
+                // Only update input if not currently being edited
+                if (!document.getElementById('webPortInput').matches(':focus')) {
+                    document.getElementById('webPortInput').value = data.web_port || 5000;
+                }
+
+                // Update auto-start
+                document.getElementById('autoStartStatus').textContent = data.auto_start ? 'Enabled' : 'Disabled';
+                document.getElementById('autoStartToggle').checked = data.auto_start;
+
+                // Update scheduled reboot
+                const rebootSchedule = document.getElementById('rebootSchedule');
+                if (data.scheduled_reboot_time) {
+                    // Only update inputs if they're not currently being edited
+                    if (!document.getElementById('rebootHourInput').matches(':focus') &&
+                        !document.getElementById('rebootMinuteInput').matches(':focus')) {
+                        // Parse the time value to set the hour and minute inputs
+                        const [hours, minutes] = data.scheduled_reboot_time.split(':');
+                        document.getElementById('rebootHourInput').value = hours;
+                        document.getElementById('rebootMinuteInput').value = minutes;
+                    }
+                    rebootSchedule.textContent = `Reboot scheduled for ${data.scheduled_reboot_time}`;
+                } else {
+                    // Only update inputs if they're not currently being edited
+                    if (!document.getElementById('rebootHourInput').matches(':focus') &&
+                        !document.getElementById('rebootMinuteInput').matches(':focus')) {
+                        document.getElementById('rebootHourInput').value = '00';
+                        document.getElementById('rebootMinuteInput').value = '00';
+                    }
+                    rebootSchedule.textContent = 'No reboot scheduled';
+                }
+
+                // Update device list
+                const deviceList = document.getElementById('deviceList');
+                if (data.devices.length === 0) {
+                    deviceList.innerHTML = '<div class="loading">No devices configured. Click "Add Device" to get started.</div>';
+                } else {
+                    deviceList.innerHTML = data.devices.map((device, index) => `
+                        <div class="device-item">
+                            <div class="device-info">
+                                <div class="device-name">
+                                    ${device.name}
+                                    <span class="device-status ${device.status.toLowerCase()}">${device.status}</span>
+                                </div>
+                                <div class="device-details">
+                                    ${device.port} @ ${device.baudrate} baud
+                                    ${device.enabled ? '✓ Enabled' : '✗ Disabled'}
+                                </div>
+                            </div>
+                            <div class="device-actions">
+                                <button class="btn-small ${device.enabled ? 'btn-warning' : 'btn-success'}"
+                                        onclick="toggleDevice(${index})">
+                                    ${device.enabled ? 'Disable' : 'Enable'}
+                                </button>
+                                <button class="btn-small btn-danger" onclick="deleteDevice(${index})">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error updating main UI:', error);
+            }
+        }
+
+        // Initial update and start polling for messages and main UI separately
+        updateMainUI();
+        updateStatusMessages();
+        
+        // Update main UI less frequently (e.g., every 10 seconds) since it doesn't change as often
+        setInterval(updateMainUI, 10000); // Update main UI every 10 seconds
+        setInterval(updateStatusMessages, config.updateInterval); // Update messages every 2 seconds
     </script>
 </body>
 </html>
