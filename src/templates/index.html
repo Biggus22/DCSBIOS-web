@@ -522,6 +522,7 @@
                     <div class="control-buttons">
                         <button class="btn-warning" id="bootServiceBtn">Boot Service</button>
                         <button class="btn-danger" id="rebootBtn">Reboot Pi</button>
+                        <button class="btn-danger" id="shutdownBtn">Shutdown Pi</button>
                     </div>
                 </div>
             </div>
@@ -964,6 +965,14 @@
             if (confirm('Are you sure you want to reboot the Raspberry Pi?')) {
                 await fetch('/api/reboot', { method: 'POST' });
                 alert('Rebooting... The page will be unavailable for a few minutes.');
+            }
+        });
+
+        // Shutdown
+        document.getElementById('shutdownBtn').addEventListener('click', async () => {
+            if (confirm('Are you sure you want to shutdown the Raspberry Pi?')) {
+                await fetch('/api/shutdown', { method: 'POST' });
+                alert('Shutting down... The page will be unavailable.');
             }
         });
 

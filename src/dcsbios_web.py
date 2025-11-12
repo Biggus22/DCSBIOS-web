@@ -476,6 +476,15 @@ def api_reboot():
     subprocess.Popen(["sudo", "reboot"])
     return jsonify({'success': True})
 
+@app.route('/api/shutdown', methods=['POST'])
+def api_shutdown():
+    if manager.running:
+        manager.stop()
+    manager.add_message("Shutting down system...")
+    time.sleep(2)
+    subprocess.Popen(["sudo", "shutdown", "-h", "now"])
+    return jsonify({'success': True})
+
 @app.route('/api/ports')
 def api_list_ports():
     ports = []
