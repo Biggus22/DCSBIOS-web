@@ -263,8 +263,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - **DCS-BIOS Project** - Original protocol and Arduino libraries
+- **DCSBiosRP2350** - Jbel26's DCS BIOS fork for RP2350 and RP2040
 - **DCS Community** - Testing and feedback
-- **Hoggit Discord** - Support and suggestions
+- **OpenPhantom Discord** - Support and suggestions
 
 ## 📧 Support
 
