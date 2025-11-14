@@ -101,10 +101,10 @@ class DCSBIOSWebManager:
         for byte in data:
             if 32 <= byte <= 126:  # Printable ASCII range
                 readable += chr(byte)
-            elif byte == 10:  # Newline
-                readable += "\\n"
-            elif byte == 13:  # Carriage return
-                readable += "\\r"
+            elif byte == 10:  # Newline - skip (don't show)
+                continue
+            elif byte == 13:  # Carriage return - skip (don't show)
+                continue
             else:
                 readable += f"[{byte:02X}]"
 
