@@ -514,6 +514,14 @@
                             <input type="number" id="udpPortInput" min="1" max="65535" placeholder="5010" value="5010">
                             <button class="btn-primary btn-small" style="margin-top: 8px;" id="saveUdpPortBtn">Save</button>
                         </div>
+
+                        <div class="setting-item">
+                            <div class="setting-label">Monitor DCS BIOS Input Stream</div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="serialInputMonitoringToggle">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -683,6 +691,9 @@
                         </div>
                     `).join('');
                 }
+
+                // Update serial input monitoring status
+                document.getElementById('serialInputMonitoringToggle').checked = data.serial_input_monitoring;
 
                 // Update messages
                 const messagesBox = document.getElementById('messagesBox');
@@ -914,6 +925,23 @@
         document.getElementById('autoStartToggle').addEventListener('change', async () => {
             const response = await fetch('/api/settings/auto_start', { method: 'POST' });
             await updateStatus();
+        });
+
+        document.getElementById('serialInputMonitoringToggle').addEventListener('change', async () => {
+            const isChecked = document.getElementById('serialInputMonitoringToggle').checked;
+            const response = await fetch('/api/settings/serial_input_monitoring', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: isChecked })
+            });
+            const data = await response.json();
+            if (data.success) {
+                await updateStatus();
+            } else {
+                console.error('Error toggling serial input monitoring:', data.error);
+                // Revert the toggle to the previous state
+                document.getElementById('serialInputMonitoringToggle').checked = !isChecked;
+            }
         });
 
         // Schedule reboot - now using separate hour and minute inputs
@@ -1148,6 +1176,9 @@
                 // Update auto-start
                 document.getElementById('autoStartStatus').textContent = data.auto_start ? 'Enabled' : 'Disabled';
                 document.getElementById('autoStartToggle').checked = data.auto_start;
+
+                // Update serial input monitoring status
+                document.getElementById('serialInputMonitoringToggle').checked = data.serial_input_monitoring;
 
                 // Update scheduled reboot
                 const rebootSchedule = document.getElementById('rebootSchedule');

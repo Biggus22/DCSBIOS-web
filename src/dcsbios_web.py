@@ -64,6 +64,7 @@ class DCSBIOSWebManager:
         self.udp_sock = None
         self.status_messages = []
         self.max_messages = 50
+        self.serial_input_monitoring = False  # Flag to control serial input monitoring
 
         # DCS-BIOS Configuration
         self.dcs_pc_ip = "192.168.1.2"
@@ -75,6 +76,7 @@ class DCSBIOSWebManager:
         self.auto_start = False
         self.scheduled_reboot_time = None
         self.web_port = 5000  # Default web interface port
+        self.serial_input_monitoring = False  # Whether to show DCS BIOS input stream in status messages
 
         self.load_config()
 
@@ -83,6 +85,30 @@ class DCSBIOSWebManager:
         self.status_messages.append(f"[{timestamp}] {msg}")
         if len(self.status_messages) > self.max_messages:
             self.status_messages.pop(0)
+
+    def format_serial_data(self, data: bytes) -> str:
+        """
+        Format binary serial data for readable output
+        """
+        # Decode to string, replacing non-decodable bytes with a placeholder
+        try:
+            decoded = data.decode('utf-8', errors='replace')
+        except:
+            decoded = str(data)
+
+        # Convert non-printable characters to hex representation for better readability
+        readable = ""
+        for byte in data:
+            if 32 <= byte <= 126:  # Printable ASCII range
+                readable += chr(byte)
+            elif byte == 10:  # Newline
+                readable += "\\n"
+            elif byte == 13:  # Carriage return
+                readable += "\\r"
+            else:
+                readable += f"[{byte:02X}]"
+
+        return readable
 
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -96,6 +122,7 @@ class DCSBIOSWebManager:
                     self.web_port = data.get("web_port", self.web_port)
                     self.udp_port = data.get("udp_port", self.udp_port)
                     self.multicast_group = data.get("multicast_group", self.multicast_group)
+                    self.serial_input_monitoring = data.get("serial_input_monitoring", False)
                 self.add_message(f"Loaded {len(self.devices)} devices from config")
                 self.add_message(f"DCS PC IP: {self.dcs_pc_ip}")
                 self.add_message(f"Auto start: {self.auto_start}")
@@ -103,6 +130,7 @@ class DCSBIOSWebManager:
                 self.add_message(f"Web port: {self.web_port}")
                 self.add_message(f"UDP port: {self.udp_port}")
                 self.add_message(f"Multicast group: {self.multicast_group}")
+                self.add_message(f"Serial input monitoring: {self.serial_input_monitoring}")
             except Exception as e:
                 self.add_message(f"Error loading config: {e}")
         else:
@@ -117,11 +145,12 @@ class DCSBIOSWebManager:
                 "scheduled_reboot_time": self.scheduled_reboot_time,
                 "web_port": self.web_port,
                 "udp_port": self.udp_port,
-                "multicast_group": self.multicast_group
+                "multicast_group": self.multicast_group,
+                "serial_input_monitoring": self.serial_input_monitoring
             }
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
-            self.add_message(f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}")
+            self.add_message(f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}, Serial Input Monitoring: {self.serial_input_monitoring}")
         except Exception as e:
             self.add_message(f"Error saving config: {e}")
 
@@ -158,6 +187,12 @@ class DCSBIOSWebManager:
                     data = ser.read(ser.in_waiting)
                     if data:
                         clean_data = data.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+
+                        # Add DCS BIOS input stream to status messages if monitoring is enabled
+                        if self.serial_input_monitoring:
+                            formatted_data = self.format_serial_data(data)
+                            self.add_message(f"DCS BIOS Input [{device.name}]: {formatted_data}")
+
                         self.udp_sock.sendto(clean_data, (self.dcs_pc_ip, self.udp_dest_port))
                         device.last_activity = time.time()
                 else:
@@ -315,6 +350,7 @@ def api_status():
         'web_port': manager.web_port,
         'udp_port': manager.udp_port,
         'multicast_group': manager.multicast_group,
+        'serial_input_monitoring': manager.serial_input_monitoring,
         'devices': [d.to_dict() for d in manager.devices],
         'messages': manager.status_messages[-20:]
     })
@@ -430,7 +466,7 @@ def api_set_multicast():
 
     success = True
     error_msg = ""
-    
+
     # Validate multicast group (basic validation)
     if new_group:
         # Basic check for valid multicast address format
@@ -447,12 +483,12 @@ def api_set_multicast():
                 if first_octet < 224 or first_octet > 239:
                     success = False
                     error_msg = "Multicast group must be in range 224.0.0.0 to 239.255.255.255"
-    
+
     # Validate UDP port
     if new_port and (not isinstance(new_port, int) or new_port < 1 or new_port > 65535):
         success = False
         error_msg = "Invalid UDP port. Must be between 1 and 65535" if not error_msg else error_msg + ", and UDP port must be between 1 and 65535"
-    
+
     if success:
         if new_group:
             manager.multicast_group = new_group
@@ -466,6 +502,19 @@ def api_set_multicast():
         return jsonify({'success': True})
     else:
         return jsonify({'success': False, 'error': error_msg})
+
+@app.route('/api/settings/serial_input_monitoring', methods=['POST'])
+def api_set_serial_input_monitoring():
+    data = request.json
+    enabled = data.get('enabled')
+
+    if enabled is not None:
+        manager.serial_input_monitoring = bool(enabled)
+        manager.save_config()
+        manager.add_message(f"Serial input monitoring {'enabled' if manager.serial_input_monitoring else 'disabled'}")
+        return jsonify({'success': True, 'enabled': manager.serial_input_monitoring})
+
+    return jsonify({'success': False, 'error': 'Missing enabled flag'})
 
 @app.route('/api/reboot', methods=['POST'])
 def api_reboot():
