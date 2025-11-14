@@ -522,6 +522,14 @@
                                 <span class="slider"></span>
                             </label>
                         </div>
+
+                        <div class="setting-item">
+                            <div class="setting-label">Log DCS BIOS Input to File</div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="serialLoggingToggle">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -694,6 +702,9 @@
 
                 // Update serial input monitoring status
                 document.getElementById('serialInputMonitoringToggle').checked = data.serial_input_monitoring;
+
+                // Update serial logging status
+                document.getElementById('serialLoggingToggle').checked = data.serial_logging_enabled;
 
                 // Update messages
                 const messagesBox = document.getElementById('messagesBox');
@@ -944,6 +955,23 @@
             }
         });
 
+        document.getElementById('serialLoggingToggle').addEventListener('change', async () => {
+            const isChecked = document.getElementById('serialLoggingToggle').checked;
+            const response = await fetch('/api/settings/serial_logging', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: isChecked })
+            });
+            const data = await response.json();
+            if (data.success) {
+                await updateStatus();
+            } else {
+                console.error('Error toggling serial logging:', data.error);
+                // Revert the toggle to the previous state
+                document.getElementById('serialLoggingToggle').checked = !isChecked;
+            }
+        });
+
         // Schedule reboot - now using separate hour and minute inputs
         document.getElementById('saveRebootBtn').addEventListener('click', async () => {
             const hour = document.getElementById('rebootHourInput').value;
@@ -1179,6 +1207,9 @@
 
                 // Update serial input monitoring status
                 document.getElementById('serialInputMonitoringToggle').checked = data.serial_input_monitoring;
+
+                // Update serial logging status
+                document.getElementById('serialLoggingToggle').checked = data.serial_logging_enabled;
 
                 // Update scheduled reboot
                 const rebootSchedule = document.getElementById('rebootSchedule');
