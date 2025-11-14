@@ -522,14 +522,14 @@
                                 <span class="slider"></span>
                             </label>
                         </div>
+                    </div>
+                </div>
 
-                        <div class="setting-item">
-                            <div class="setting-label">Log DCS BIOS Input to File</div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="serialLoggingToggle">
-                                <span class="slider"></span>
-                            </label>
-                        </div>
+                <div class="card" style="margin-bottom: 20px;">
+                    <h2>💾 Client-Side Logging</h2>
+                    <div class="control-buttons">
+                        <button class="btn-primary" id="downloadLogBtn">Download Log</button>
+                        <button class="btn-warning" id="clearLogBtn">Clear Log Buffer</button>
                     </div>
                 </div>
 
@@ -601,6 +601,8 @@
         let selectedPort = null;
         let updateInterval = null;
         let isInputActive = false;  // Flag to track if any input field is active
+        let clientLogBuffer = []; // Array to store log entries for client-side download
+        let lastMessageTimestamp = null; // Track the timestamp of the last message received
         // Configuration object to store settings
         let config = {
             updateInterval: 2000, // Default refresh rate
@@ -703,10 +705,15 @@
                 // Update serial input monitoring status
                 document.getElementById('serialInputMonitoringToggle').checked = data.serial_input_monitoring;
 
-                // Update serial logging status
-                document.getElementById('serialLoggingToggle').checked = data.serial_logging_enabled;
+                // Update messages - add them to the client log buffer immediately
+                // Add new messages to client log buffer if they're not already there
+                data.messages.forEach(msg => {
+                    if (!clientLogBuffer.includes(msg)) {
+                        clientLogBuffer.push(msg);
+                    }
+                });
 
-                // Update messages
+                // Update messages display (with 2-second refresh rate)
                 const messagesBox = document.getElementById('messagesBox');
                 if (data.messages.length === 0) {
                     messagesBox.innerHTML = '<div class="message">No messages yet.</div>';
@@ -955,20 +962,39 @@
             }
         });
 
-        document.getElementById('serialLoggingToggle').addEventListener('change', async () => {
-            const isChecked = document.getElementById('serialLoggingToggle').checked;
-            const response = await fetch('/api/settings/serial_logging', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled: isChecked })
-            });
-            const data = await response.json();
-            if (data.success) {
-                await updateStatus();
-            } else {
-                console.error('Error toggling serial logging:', data.error);
-                // Revert the toggle to the previous state
-                document.getElementById('serialLoggingToggle').checked = !isChecked;
+
+        // Download log button
+        document.getElementById('downloadLogBtn').addEventListener('click', async () => {
+            if (clientLogBuffer.length === 0) {
+                alert('No log data to download');
+                return;
+            }
+
+            // Create a text file with all log entries
+            const logContent = clientLogBuffer.join('\n');
+
+            // Create a blob and download it
+            const blob = new Blob([logContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `dcsbios_log_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+            document.body.appendChild(a);
+            a.click();
+
+            // Clean up
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        });
+
+        // Clear log buffer button
+        document.getElementById('clearLogBtn').addEventListener('click', async () => {
+            if (confirm('Are you sure you want to clear the log buffer?')) {
+                clientLogBuffer = [];
+                alert('Log buffer cleared');
             }
         });
 
@@ -1273,7 +1299,27 @@
         
         // Update main UI less frequently (e.g., every 10 seconds) since it doesn't change as often
         setInterval(updateMainUI, 10000); // Update main UI every 10 seconds
-        setInterval(updateStatusMessages, config.updateInterval); // Update messages every 2 seconds
+
+        // Update messages display (UI) every 2 seconds to avoid flickering
+        setInterval(updateStatusMessages, config.updateInterval); // Update messages display every 2 seconds
+
+        // Update log buffer more frequently for near real-time logging
+        setInterval(async function() {
+            // Only update the log buffer without updating the UI display
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                // Add new messages to client log buffer if they're not already there
+                data.messages.forEach(msg => {
+                    if (!clientLogBuffer.includes(msg)) {
+                        clientLogBuffer.push(msg);
+                    }
+                });
+            } catch (error) {
+                console.error('Error updating log buffer:', error);
+            }
+        }, 500); // Update log buffer every 0.5 seconds
     </script>
 </body>
 </html>

@@ -10,6 +10,8 @@ Web-based management interface for DCS-BIOS serial controllers on Raspberry Pi. 
 - 🌐 **Web Interface** - Access from any device (PC, tablet, phone)
 - 🎮 **Device Management** - Add, configure, and monitor controllers
 - 📊 **Real-time Status** - Live updates every 2 seconds
+- 🔍 **Serial Input Monitoring** - Monitor DCS BIOS input stream in real-time
+- 💾 **Client-Side Logging** - Download logs to your local computer
 - 🔄 **Auto-reconnect** - Handles USB disconnections gracefully
 - ⚙️ **Easy Configuration** - Visual port selection and settings
 - 🚀 **Boot Service** - Optional headless operation
@@ -73,12 +75,12 @@ The Raspberry Pi acts as a bridge between DCS World and your physical controller
    ```bash
    curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash
    ```
-   
+
    **Dev Branch (Latest Features):**
    ```bash
    curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/dev/install.sh | bash
    ```
-   
+
    The installation automatically sets up a systemd service that starts the interface on boot.
 
 2. **If prompted**, log out and log back in (for serial port permissions)
@@ -91,6 +93,42 @@ The Raspberry Pi acts as a bridge between DCS World and your physical controller
    - Click "Start" button
 
 The interface is now configured to start automatically when your Raspberry Pi boots up.
+
+### New Features Documentation
+
+#### 🔍 Serial Input Monitoring
+
+Monitor the raw DCS BIOS input stream directly in the status messages:
+
+1. **Enable monitoring**: Go to Settings → Toggle "Monitor DCS BIOS Input Stream"
+2. **View data**: Real-time DCS BIOS commands will appear in the Status Messages box
+3. **Format**: Messages appear as `[HH:MM:SS] DCS BIOS Input [DeviceName]: COMMAND DATA`
+
+**Example output**:
+```
+[22:58:42] DCS BIOS Input [ACM0]: PLT_ENGINE_MASTER_R 1
+```
+
+This feature is invaluable for:
+- Debugging hardware issues
+- Verifying switch/panel functionality
+- Understanding DCS BIOS protocol flow
+- Troubleshooting communication problems
+
+#### 💾 Client-Side Logging
+
+Download all serial communication data directly to your computer:
+
+1. **Monitor messages**: Ensure "Monitor DCS BIOS Input Stream" is enabled if you want to log raw data
+2. **Access logs**: Scroll down to "Client-Side Logging" section
+3. **Download**: Click "Download Log" button to save all messages to your computer
+4. **Manage logs**: Use "Clear Log Buffer" to reset the log when needed
+
+**Key benefits**:
+- Logs saved directly to your viewing computer (not server)
+- Near real-time updates (every 0.5 seconds)
+- All data preserved for post-session analysis
+- Timestamped entries for chronological review
 
 ### Daily Usage
 

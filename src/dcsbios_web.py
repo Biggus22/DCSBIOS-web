@@ -65,9 +65,6 @@ class DCSBIOSWebManager:
         self.status_messages = []
         self.max_messages = 50
         self.serial_input_monitoring = False  # Flag to control serial input monitoring
-        self.serial_logging_enabled = False  # Flag to control logging to file
-        self.serial_log_file = None  # File handle for serial logging
-        self.serial_log_filename = os.path.join(CONFIG_DIR, "dcsbios_serial_log.txt")  # Default log file path
 
         # DCS-BIOS Configuration
         self.dcs_pc_ip = "192.168.1.2"
@@ -89,15 +86,6 @@ class DCSBIOSWebManager:
         self.status_messages.append(formatted_msg)
         if len(self.status_messages) > self.max_messages:
             self.status_messages.pop(0)
-
-        # Also write to log file if serial logging is enabled
-        if self.serial_logging_enabled and self.serial_log_file:
-            try:
-                self.serial_log_file.write(formatted_msg + "\n")
-                self.serial_log_file.flush()  # Ensure data is written immediately
-            except Exception as e:
-                self.add_message(f"Error writing to log file: {e}")
-                self.stop_serial_logging()
 
     def format_serial_data(self, data: bytes) -> str:
         """
@@ -123,35 +111,6 @@ class DCSBIOSWebManager:
 
         return readable
 
-    def start_serial_logging(self):
-        """Start logging serial data to file"""
-        try:
-            # Close existing log file if open
-            if self.serial_log_file:
-                self.serial_log_file.close()
-
-            # Open new log file in append mode
-            self.serial_log_file = open(self.serial_log_filename, 'a', encoding='utf-8')
-            self.serial_logging_enabled = True
-            self.add_message(f"Serial logging started. Log file: {self.serial_log_filename}")
-            return True
-        except Exception as e:
-            self.add_message(f"Error starting serial logging: {e}")
-            return False
-
-    def stop_serial_logging(self):
-        """Stop logging serial data to file"""
-        try:
-            if self.serial_log_file:
-                self.serial_log_file.close()
-                self.serial_log_file = None
-            self.serial_logging_enabled = False
-            self.add_message("Serial logging stopped")
-            return True
-        except Exception as e:
-            self.add_message(f"Error stopping serial logging: {e}")
-            return False
-
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
             try:
@@ -165,7 +124,6 @@ class DCSBIOSWebManager:
                     self.udp_port = data.get("udp_port", self.udp_port)
                     self.multicast_group = data.get("multicast_group", self.multicast_group)
                     self.serial_input_monitoring = data.get("serial_input_monitoring", False)
-                    self.serial_logging_enabled = data.get("serial_logging_enabled", False)
                 self.add_message(f"Loaded {len(self.devices)} devices from config")
                 self.add_message(f"DCS PC IP: {self.dcs_pc_ip}")
                 self.add_message(f"Auto start: {self.auto_start}")
@@ -174,11 +132,6 @@ class DCSBIOSWebManager:
                 self.add_message(f"UDP port: {self.udp_port}")
                 self.add_message(f"Multicast group: {self.multicast_group}")
                 self.add_message(f"Serial input monitoring: {self.serial_input_monitoring}")
-                self.add_message(f"Serial logging: {self.serial_logging_enabled}")
-
-                # Start logging if it was enabled in config
-                if self.serial_logging_enabled:
-                    self.start_serial_logging()
             except Exception as e:
                 self.add_message(f"Error loading config: {e}")
         else:
@@ -194,12 +147,11 @@ class DCSBIOSWebManager:
                 "web_port": self.web_port,
                 "udp_port": self.udp_port,
                 "multicast_group": self.multicast_group,
-                "serial_input_monitoring": self.serial_input_monitoring,
-                "serial_logging_enabled": self.serial_logging_enabled
+                "serial_input_monitoring": self.serial_input_monitoring
             }
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
-            self.add_message(f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}, Serial Input Monitoring: {self.serial_input_monitoring}, Serial Logging: {self.serial_logging_enabled}")
+            self.add_message(f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}, Serial Input Monitoring: {self.serial_input_monitoring}")
         except Exception as e:
             self.add_message(f"Error saving config: {e}")
 
@@ -349,11 +301,6 @@ class DCSBIOSWebManager:
         for device in self.devices:
             device.status = "Stopped"
         self.threads = []
-
-        # Stop serial logging if it's active
-        if self.serial_logging_enabled:
-            self.stop_serial_logging()
-
         self.add_message("DCS-BIOS manager stopped")
         return True
 
@@ -405,7 +352,6 @@ def api_status():
         'udp_port': manager.udp_port,
         'multicast_group': manager.multicast_group,
         'serial_input_monitoring': manager.serial_input_monitoring,
-        'serial_logging_enabled': manager.serial_logging_enabled,
         'devices': [d.to_dict() for d in manager.devices],
         'messages': manager.status_messages[-20:]
     })
@@ -571,24 +517,6 @@ def api_set_serial_input_monitoring():
 
     return jsonify({'success': False, 'error': 'Missing enabled flag'})
 
-@app.route('/api/settings/serial_logging', methods=['POST'])
-def api_set_serial_logging():
-    data = request.json
-    enabled = data.get('enabled')
-
-    if enabled is not None:
-        if bool(enabled):
-            success = manager.start_serial_logging()
-        else:
-            success = manager.stop_serial_logging()
-
-        if success:
-            manager.save_config()
-            return jsonify({'success': True, 'enabled': manager.serial_logging_enabled})
-        else:
-            return jsonify({'success': False, 'error': 'Failed to toggle serial logging'})
-
-    return jsonify({'success': False, 'error': 'Missing enabled flag'})
 
 @app.route('/api/reboot', methods=['POST'])
 def api_reboot():
