@@ -66,7 +66,7 @@ run_command "sudo apt update" "Package list update"
 # Install required dependencies
 echo
 echo "[2/9] Installing required dependencies..."
-run_command "sudo apt install -y python3 python3-pip python3-venv git curl uhubctl" "Dependency installation"
+run_command "sudo apt install -y python3-full python3-pip git curl uhubctl" "Dependency installation"
 
 # Check if user is in dialout group (needed for serial port access)
 echo
@@ -160,7 +160,7 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$INSTALL_DIR/src
-ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/src/dcsbios_web.py --host=0.0.0.0
+ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/src/dcsbios_web.py --host=0.0.0.0 --headless
 Restart=on-failure
 RestartSec=5
 

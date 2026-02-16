@@ -135,6 +135,22 @@
             margin-bottom: 5px;
         }
 
+        .device-name-input {
+            border: none;
+            background: transparent;
+            font-weight: bold;
+            font-size: 16px;
+            color: #1e3c72;
+            width: 200px;
+            padding: 0;
+            margin: 0;
+        }
+
+        .device-name-input:focus {
+            outline: 1px solid #1e3c72;
+            background: white;
+        }
+
         .device-details {
             font-size: 13px;
             color: #666;
@@ -681,7 +697,9 @@
                         <div class="device-item">
                             <div class="device-info">
                                 <div class="device-name">
-                                    ${device.name}
+                                    <input type="text" class="device-name-input" value="${device.name}" 
+                                           onchange="updateDeviceName(${index}, this.value)"
+                                           onfocus="setInputActive(true)" onblur="setInputActive(false)">
                                     <span class="device-status ${device.status.toLowerCase()}">${device.status}</span>
                                 </div>
                                 <div class="device-details">
@@ -768,6 +786,25 @@
                 } else {
                     alert(data.error);
                 }
+            }
+        }
+
+        // Update device name
+        async function updateDeviceName(index, newName) {
+            if (newName.trim() === '') {
+                alert('Device name cannot be empty');
+                await updateStatus(); // Refresh to revert the input
+                return;
+            }
+            const response = await fetch(`/api/device/update/${index}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName.trim() })
+            });
+            const data = await response.json();
+            if (!data.success) {
+                alert(data.error);
+                await updateStatus(); // Refresh to revert the input
             }
         }
 
@@ -1266,7 +1303,9 @@
                         <div class="device-item">
                             <div class="device-info">
                                 <div class="device-name">
-                                    ${device.name}
+                                    <input type="text" class="device-name-input" value="${device.name}" 
+                                           onchange="updateDeviceName(${index}, this.value)"
+                                           onfocus="setInputActive(true)" onblur="setInputActive(false)">
                                     <span class="device-status ${device.status.toLowerCase()}">${device.status}</span>
                                 </div>
                                 <div class="device-details">

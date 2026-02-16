@@ -404,6 +404,28 @@ def api_delete_device(index):
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Invalid device index'})
 
+@app.route('/api/device/update/<int:index>', methods=['POST'])
+def api_update_device(index):
+    if 0 <= index < len(manager.devices):
+        device = manager.devices[index]
+        data = request.json
+        new_name = data.get('name')
+        new_port = data.get('port')
+        new_baudrate = data.get('baudrate')
+
+        if new_name:
+            old_name = device.name
+            device.name = new_name
+        if new_port:
+            device.port = new_port
+        if new_baudrate:
+            device.baudrate = new_baudrate
+
+        manager.save_config()
+        manager.add_message(f"Updated device: {device.name}")
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'Invalid device index'})
+
 @app.route('/api/settings/dcs_ip', methods=['POST'])
 def api_set_dcs_ip():
     data = request.json
