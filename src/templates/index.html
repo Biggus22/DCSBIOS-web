@@ -448,6 +448,12 @@
                 <div class="status-indicator">
                     <strong>Auto-start:</strong> <span id="autoStartStatus">-</span>
                 </div>
+                <div class="status-indicator">
+                    <strong>CPU:</strong> <span id="cpuTemp">-</span>°C
+                </div>
+                <div class="status-indicator">
+                    <strong>RAM:</strong> <span id="memoryUsage">-</span>
+                </div>
             </div>
         </header>
 
@@ -650,6 +656,40 @@
                 // Update auto-start
                 document.getElementById('autoStartStatus').textContent = data.auto_start ? 'Enabled' : 'Disabled';
                 document.getElementById('autoStartToggle').checked = data.auto_start;
+
+                // Update system information
+                if (data.system) {
+                    if (data.system.cpu_temp !== null) {
+                        document.getElementById('cpuTemp').textContent = data.system.cpu_temp;
+                    } else {
+                        document.getElementById('cpuTemp').textContent = 'N/A';
+                    }
+                    
+                    if (data.system.memory) {
+                        const mem = data.system.memory;
+                        document.getElementById('memoryUsage').textContent = 
+                            `${mem.used}MB / ${mem.total}MB (${mem.percentage}%)`;
+                    } else {
+                        document.getElementById('memoryUsage').textContent = 'N/A';
+                    }
+                }
+
+                // Update system information
+                if (data.system) {
+                    if (data.system.cpu_temp !== null) {
+                        document.getElementById('cpuTemp').textContent = data.system.cpu_temp;
+                    } else {
+                        document.getElementById('cpuTemp').textContent = 'N/A';
+                    }
+                    
+                    if (data.system.memory) {
+                        const mem = data.system.memory;
+                        document.getElementById('memoryUsage').textContent = 
+                            `${mem.used}MB / ${mem.total}MB (${mem.percentage}%)`;
+                    } else {
+                        document.getElementById('memoryUsage').textContent = 'N/A';
+                    }
+                }
 
                 // Update scheduled reboot
                 const rebootSchedule = document.getElementById('rebootSchedule');

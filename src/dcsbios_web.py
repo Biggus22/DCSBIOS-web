@@ -17,6 +17,46 @@ import socket
 import struct
 import serial
 
+# System monitoring functions
+def get_cpu_temperature():
+    """Get CPU temperature in Celsius"""
+    try:
+        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+            temp = int(f.read().strip()) / 1000.0
+            return round(temp, 1)
+    except:
+        return None
+
+def get_memory_info():
+    """Get memory information"""
+    try:
+        with open('/proc/meminfo', 'r') as f:
+            lines = f.readlines()
+            mem_info = {}
+            for line in lines:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip().split()[0]  # Get the numeric value
+                    try:
+                        mem_info[key] = int(value)
+                    except:
+                        pass
+            
+            if 'MemTotal' in mem_info and 'MemAvailable' in mem_info:
+                total_mb = mem_info['MemTotal'] // 1024
+                available_mb = mem_info['MemAvailable'] // 1024
+                used_mb = total_mb - available_mb
+                return {
+                    'total': total_mb,
+                    'used': used_mb,
+                    'available': available_mb,
+                    'percentage': round((used_mb / total_mb) * 100, 1)
+                }
+    except:
+        pass
+    return None
+
 # Import the manager from the TUI script
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -353,7 +393,11 @@ def api_status():
         'multicast_group': manager.multicast_group,
         'serial_input_monitoring': manager.serial_input_monitoring,
         'devices': [d.to_dict() for d in manager.devices],
-        'messages': manager.status_messages[-20:]
+        'messages': manager.status_messages[-20:],
+        'system': {
+            'cpu_temp': get_cpu_temperature(),
+            'memory': get_memory_info()
+        }
     })
 
 @app.route('/api/start', methods=['POST'])
