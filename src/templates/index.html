@@ -103,7 +103,7 @@
         }
 
         .device-list {
-            max-height: 500px;
+            max-height: 70vh;
             overflow-y: auto;
         }
 
@@ -133,22 +133,6 @@
             font-size: 16px;
             color: #1e3c72;
             margin-bottom: 5px;
-        }
-
-        .device-name-input {
-            border: none;
-            background: transparent;
-            font-weight: bold;
-            font-size: 16px;
-            color: #1e3c72;
-            width: 200px;
-            padding: 0;
-            margin: 0;
-        }
-
-        .device-name-input:focus {
-            outline: 1px solid #1e3c72;
-            background: white;
         }
 
         .device-details {
@@ -568,10 +552,10 @@
         </div>
     </div>
 
-    <!-- Add Device Modal -->
+    <!-- Add/Edit Device Modal -->
     <div id="addDeviceModal" class="modal">
         <div class="modal-content">
-            <h3>Add New Device</h3>
+            <h3 id="modalTitle">Add New Device</h3>
             <div class="form-group">
                 <label>Select Port:</label>
                 <div class="port-list" id="portList">
@@ -615,6 +599,7 @@
 
     <script>
         let selectedPort = null;
+        let editMode = null;
         let updateInterval = null;
         let isInputActive = false;  // Flag to track if any input field is active
         let clientLogBuffer = []; // Array to store log entries for client-side download
@@ -697,9 +682,7 @@
                         <div class="device-item">
                             <div class="device-info">
                                 <div class="device-name">
-                                    <input type="text" class="device-name-input" value="${device.name}" 
-                                           onchange="updateDeviceName(${index}, this.value)"
-                                           onfocus="setInputActive(true)" onblur="setInputActive(false)">
+                                    ${device.name}
                                     <span class="device-status ${device.status.toLowerCase()}">${device.status}</span>
                                 </div>
                                 <div class="device-details">
@@ -708,6 +691,9 @@
                                 </div>
                             </div>
                             <div class="device-actions">
+                                <button class="btn-small btn-info" onclick="editDevice(${index})">
+                                    Edit
+                                </button>
                                 <button class="btn-small ${device.enabled ? 'btn-warning' : 'btn-success'}"
                                         onclick="toggleDevice(${index})">
                                     ${device.enabled ? 'Disable' : 'Enable'}
@@ -789,27 +775,58 @@
             }
         }
 
-        // Update device name
-        async function updateDeviceName(index, newName) {
-            if (newName.trim() === '') {
-                alert('Device name cannot be empty');
-                await updateStatus(); // Refresh to revert the input
+        // Edit device
+        async function editDevice(index) {
+            // Get current device data
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            const device = data.devices[index];
+            
+            if (!device) {
+                alert('Device not found');
                 return;
             }
-            const response = await fetch(`/api/device/update/${index}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newName.trim() })
-            });
-            const data = await response.json();
-            if (!data.success) {
-                alert(data.error);
-                await updateStatus(); // Refresh to revert the input
+
+            // Set modal to edit mode
+            document.getElementById('modalTitle').textContent = 'Edit Device';
+            document.getElementById('confirmAddBtn').textContent = 'Update Device';
+            editMode = { index, device };
+
+            const modal = document.getElementById('addDeviceModal');
+            modal.style.display = 'block';
+
+            // Load available ports
+            const portsResponse = await fetch('/api/ports');
+            const portsData = await portsResponse.json();
+            const portList = document.getElementById('portList');
+
+            if (portsData.ports.length === 0) {
+                portList.innerHTML = '<div class="loading">No serial ports detected</div>';
+            } else {
+                portList.innerHTML = portsData.ports.map(port => `
+                    <div class="port-item ${port.port === device.port ? 'selected' : ''} ${port.status === 'configured' && port.port !== device.port ? 'configured' : ''}"
+                         onclick="selectPort('${port.port}', ${port.status === 'configured' && port.port !== device.port})">
+                        <strong>${port.port}</strong>
+                        <span class="badge badge-${port.status}">${port.status.toUpperCase()}</span>
+                        <br>
+                        <small>${port.info}</small>
+                    </div>
+                `).join('');
             }
+
+            // Pre-fill form with current device data
+            document.getElementById('deviceNameInput').value = device.name;
+            document.getElementById('baudrateInput').value = device.baudrate;
+            selectedPort = device.port;
         }
 
         // Add device
         document.getElementById('addDeviceBtn').addEventListener('click', async () => {
+            // Set modal to add mode
+            document.getElementById('modalTitle').textContent = 'Add New Device';
+            document.getElementById('confirmAddBtn').textContent = 'Add Device';
+            editMode = null;
+
             const modal = document.getElementById('addDeviceModal');
             modal.style.display = 'block';
 
@@ -863,17 +880,29 @@
                 return;
             }
 
-            const response = await fetch('/api/device/add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, port: selectedPort, baudrate })
-            });
+            let response;
+            if (editMode) {
+                // Edit mode
+                response = await fetch(`/api/device/update/${editMode.index}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, port: selectedPort, baudrate })
+                });
+            } else {
+                // Add mode
+                response = await fetch('/api/device/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, port: selectedPort, baudrate })
+                });
+            }
 
             const data = await response.json();
             if (data.success) {
                 document.getElementById('addDeviceModal').style.display = 'none';
                 document.getElementById('deviceNameInput').value = '';
                 document.getElementById('baudrateInput').value = '250000';
+                editMode = null;
                 await updateStatus();
             } else {
                 alert(data.error);
@@ -1303,9 +1332,7 @@
                         <div class="device-item">
                             <div class="device-info">
                                 <div class="device-name">
-                                    <input type="text" class="device-name-input" value="${device.name}" 
-                                           onchange="updateDeviceName(${index}, this.value)"
-                                           onfocus="setInputActive(true)" onblur="setInputActive(false)">
+                                    ${device.name}
                                     <span class="device-status ${device.status.toLowerCase()}">${device.status}</span>
                                 </div>
                                 <div class="device-details">
@@ -1314,6 +1341,9 @@
                                 </div>
                             </div>
                             <div class="device-actions">
+                                <button class="btn-small btn-info" onclick="editDevice(${index})">
+                                    Edit
+                                </button>
                                 <button class="btn-small ${device.enabled ? 'btn-warning' : 'btn-success'}"
                                         onclick="toggleDevice(${index})">
                                     ${device.enabled ? 'Disable' : 'Enable'}
