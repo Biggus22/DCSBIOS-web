@@ -676,7 +676,8 @@
 
                 // Update system information
                 if (data.system) {
-                    if (data.system.cpu_temp !== null) {
+                    console.log('System data:', data.system); // Debug
+                    if (data.system.cpu_temp !== null && data.system.cpu_temp !== undefined) {
                         document.getElementById('cpuTemp').textContent = data.system.cpu_temp;
                     } else {
                         document.getElementById('cpuTemp').textContent = 'N/A';
@@ -689,6 +690,8 @@
                     } else {
                         document.getElementById('memoryUsage').textContent = 'N/A';
                     }
+                } else {
+                    console.log('No system data in response'); // Debug
                 }
 
                 // Update scheduled reboot
@@ -1336,6 +1339,26 @@
                 // Update auto-start
                 document.getElementById('autoStartStatus').textContent = data.auto_start ? 'Enabled' : 'Disabled';
                 document.getElementById('autoStartToggle').checked = data.auto_start;
+
+                // Update system information
+                if (data.system) {
+                    console.log('System data:', data.system); // Debug
+                    if (data.system.cpu_temp !== null && data.system.cpu_temp !== undefined) {
+                        document.getElementById('cpuTemp').textContent = data.system.cpu_temp;
+                    } else {
+                        document.getElementById('cpuTemp').textContent = 'N/A';
+                    }
+                    
+                    if (data.system.memory) {
+                        const mem = data.system.memory;
+                        document.getElementById('memoryUsage').textContent = 
+                            `${mem.used}MB / ${mem.total}MB (${mem.percentage}%)`;
+                    } else {
+                        document.getElementById('memoryUsage').textContent = 'N/A';
+                    }
+                } else {
+                    console.log('No system data in response'); // Debug
+                }
 
                 // Update serial input monitoring status
                 document.getElementById('serialInputMonitoringToggle').checked = data.serial_input_monitoring;

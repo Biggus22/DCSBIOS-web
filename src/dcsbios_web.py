@@ -21,11 +21,39 @@ import serial
 def get_cpu_temperature():
     """Get CPU temperature in Celsius"""
     try:
+        # Try Raspberry Pi thermal zone
         with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
             temp = int(f.read().strip()) / 1000.0
             return round(temp, 1)
     except:
-        return None
+        pass
+    
+    # Fallback: try other thermal zones
+    try:
+        for i in range(5):
+            try:
+                with open(f'/sys/class/thermal/thermal_zone{i}/temp', 'r') as f:
+                    temp = int(f.read().strip()) / 1000.0
+                    return round(temp, 1)
+            except:
+                continue
+    except:
+        pass
+    
+    # Try using vcgencmd (Raspberry Pi specific)
+    try:
+        result = subprocess.run(['vcgencmd', 'measure_temp'], 
+                              capture_output=True, text=True, timeout=2)
+        if result.returncode == 0:
+            # Output format: "temp=45.6'C"
+            temp_str = result.stdout.strip()
+            if "temp=" in temp_str:
+                temp_value = temp_str.split('=')[1].split("'")[0]
+                return round(float(temp_value), 1)
+    except:
+        pass
+    
+    return None
 
 def get_memory_info():
     """Get memory information"""
@@ -55,6 +83,7 @@ def get_memory_info():
                 }
     except:
         pass
+    
     return None
 
 # Import the manager from the TUI script
