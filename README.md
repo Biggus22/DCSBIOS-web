@@ -16,6 +16,7 @@ Web-based management interface for DCS-BIOS serial controllers on Raspberry Pi. 
 - ⚙️ **Easy Configuration** - Visual port selection and settings
 - 🚀 **Boot Service** - Optional headless operation
 - 📱 **Mobile Friendly** - Responsive design for all screen sizes
+- ⚡ **Power Health Alerts** - Detects Raspberry Pi undervoltage/throttling events
 
 ## 🚀 Quick Install
 
@@ -178,6 +179,7 @@ http://<raspberry-pi-ip>:5000
 - **Boot Service**: Configure automatic startup on Pi boot (headless mode)
 - **Reboot Pi**: Remote reboot capability
 - **USB Power Control**: Emergency USB power off (requires reboot to restore)
+- **Power Health Alert**: Dashboard banner lights up when `vcgencmd get_throttled` reports undervoltage/throttling, so you know to check the Pi's power brick or cabling.
 
 ## 🌟 Advanced Features
 

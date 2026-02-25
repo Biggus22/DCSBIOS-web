@@ -37,6 +37,24 @@
             margin-bottom: 10px;
         }
 
+        .alert-banner {
+            margin-top: 15px;
+            padding: 10px 15px;
+            border-radius: 6px;
+            background: #fff8e1;
+            border: 1px solid #ffe0b2;
+            color: #8a4b00;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .alert-banner.active {
+            border-color: #ffb74d;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        }
+
         .status-bar {
             display: flex;
             justify-content: space-between;
@@ -455,6 +473,9 @@
                     <strong>RAM:</strong> <span id="memoryUsage">-</span>
                 </div>
             </div>
+            <div class="alert-banner" id="powerWarning">
+                <span id="powerWarningText"></span>
+            </div>
         </header>
 
         <div class="main-grid">
@@ -618,6 +639,53 @@
             multicastGroup: '239.255.50.10' // Default multicast group
         };
 
+        function renderPowerWarning(power) {
+            const banner = document.getElementById('powerWarning');
+            const textEl = document.getElementById('powerWarningText');
+            if (!banner || !textEl) {
+                return;
+            }
+
+            const hasAlert = power && (
+                power.undervoltage_now ||
+                power.undervoltage_occurred ||
+                power.throttled_now ||
+                power.throttled_occurred
+            );
+
+            if (!hasAlert) {
+                banner.style.display = 'none';
+                banner.classList.remove('active');
+                textEl.textContent = '';
+                return;
+            }
+
+            const messages = [];
+            if (power.undervoltage_now) {
+                messages.push('Undervoltage detected');
+            } else if (power.undervoltage_occurred) {
+                messages.push('Undervoltage occurred since boot');
+            }
+
+            if (power.throttled_now) {
+                messages.push('CPU throttling active');
+            } else if (power.throttled_occurred) {
+                messages.push('CPU throttled earlier');
+            }
+
+            if (messages.length === 0) {
+                banner.style.display = 'none';
+                banner.classList.remove('active');
+                textEl.textContent = '';
+                return;
+            }
+
+            textEl.textContent = `⚠️ ${messages.join(' • ')}. Check Pi power/thermals.`;
+            banner.style.display = 'flex';
+            const activeNow = Boolean(power.undervoltage_now || power.throttled_now);
+            banner.classList.toggle('active', activeNow);
+        }
+
         // Update status
         async function updateStatus() {
             // Only update if no input field is active
@@ -690,8 +758,10 @@
                     } else {
                         document.getElementById('memoryUsage').textContent = 'N/A';
                     }
+                    renderPowerWarning(data.system.power);
                 } else {
                     console.log('No system data in response'); // Debug
+                    renderPowerWarning(null);
                 }
 
                 // Update scheduled reboot
@@ -1356,8 +1426,10 @@
                     } else {
                         document.getElementById('memoryUsage').textContent = 'N/A';
                     }
+                    renderPowerWarning(data.system.power);
                 } else {
                     console.log('No system data in response'); // Debug
+                    renderPowerWarning(null);
                 }
 
                 // Update serial input monitoring status

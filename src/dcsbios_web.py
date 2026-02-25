@@ -86,6 +86,41 @@ def get_memory_info():
     
     return None
 
+def get_throttled_status():
+    """Get Raspberry Pi throttled/undervoltage status via vcgencmd"""
+    try:
+        result = subprocess.run(
+            ['vcgencmd', 'get_throttled'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode != 0:
+            return None
+
+        output = result.stdout.strip()
+        if 'throttled=' not in output:
+            return None
+
+        hex_value = output.split('=', 1)[1].strip()
+        # Allow values with or without 0x prefix
+        parsed_hex = hex_value[2:] if hex_value.lower().startswith('0x') else hex_value
+        value = int(parsed_hex, 16)
+
+        return {
+            'raw': hex_value,
+            'undervoltage_now': bool(value & 0x1),
+            'freq_capped_now': bool(value & 0x2),
+            'throttled_now': bool(value & 0x4),
+            'temp_limit_now': bool(value & 0x8),
+            'undervoltage_occurred': bool(value & 0x10000),
+            'freq_capped_occurred': bool(value & 0x20000),
+            'throttled_occurred': bool(value & 0x40000),
+            'temp_limit_occurred': bool(value & 0x80000)
+        }
+    except Exception:
+        return None
+
 # Import the manager from the TUI script
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -425,7 +460,8 @@ def api_status():
         'messages': manager.status_messages[-20:],
         'system': {
             'cpu_temp': get_cpu_temperature(),
-            'memory': get_memory_info()
+            'memory': get_memory_info(),
+            'power': get_throttled_status()
         }
     })
 
