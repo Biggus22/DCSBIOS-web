@@ -23,13 +23,15 @@ SSH into your Raspberry Pi and run:
 
 ### Main Branch (Stable Release)
 ```bash
-curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash -s -- --branch main
 ```
 
 ### Dev Branch (Latest Features)
 ```bash
-curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/dev/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/dev/install.sh | bash -s -- --branch dev
 ```
+
+> Tip: The installer accepts `--branch <name>` to force the git checkout. Leaving it off defaults to `dev`.
 
 The installation will automatically:
 - Install all required dependencies
@@ -56,6 +58,8 @@ sudo systemctl disable dcsbios.service  # Disable auto-start
 - DCS-BIOS compatible controllers (Arduino, Teensy, etc.)
 - Network connection to DCS PC
 
+The installer targets Debian-based systems (tested on Raspberry Pi OS). It will warn but continue on other Linux flavors; non-Debian distros may need manual dependency tweaks. The script also installs `uhubctl` so the web UI can toggle USB power—safe to leave in place even if your hardware does not support it.
+
 ## 🎯 How It Works
 
 ```
@@ -71,15 +75,15 @@ The Raspberry Pi acts as a bridge between DCS World and your physical controller
 
 1. **Install** (one command):
 
-   **Main Branch (Stable Release):**
-   ```bash
-   curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash
-   ```
+  **Main Branch (Stable Release):**
+  ```bash
+  curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/main/install.sh | bash -s -- --branch main
+  ```
 
-   **Dev Branch (Latest Features):**
-   ```bash
-   curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/dev/install.sh | bash
-   ```
+  **Dev Branch (Latest Features):**
+  ```bash
+  curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/dev/install.sh | bash -s -- --branch dev
+  ```
 
    The installation automatically sets up a systemd service that starts the interface on boot.
 

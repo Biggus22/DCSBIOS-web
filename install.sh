@@ -6,8 +6,53 @@
 
 set -e  # Exit on any error
 
+INSTALL_BRANCH="dev"
+
+show_help() {
+    cat << EOF
+Usage: install.sh [--branch <branch-name>]
+
+Options:
+  --branch <name>  Git branch to install (default: dev)
+  -h, --help       Show this help message and exit
+
+Examples:
+  bash install.sh --branch main
+  curl -sSL https://raw.githubusercontent.com/Biggus22/DCSBIOS-web/dev/install.sh | bash -s -- --branch dev
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --branch)
+            if [[ -z "$2" ]]; then
+                echo "Error: --branch requires a value"
+                exit 1
+            fi
+            INSTALL_BRANCH="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+if [[ ! "$INSTALL_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "Invalid branch name: $INSTALL_BRANCH"
+    exit 1
+fi
+
 echo "DCS-BIOS Controller Manager Web Interface - Installation Script"
 echo "==============================================================="
+
+echo "Selected branch: $INSTALL_BRANCH"
 
 # Check if running on Raspberry Pi or similar Linux system
 if [[ "$OSTYPE" != "linux-gnu"* ]]; then
@@ -99,15 +144,15 @@ if [ -d ".git" ] && [ -d "src" ] && [ -d "scripts" ]; then
         echo "[WARNING] requirements.txt not found in current directory"
     fi
 else
-    echo "[INFO] Cloning repository from GitHub dev branch..."
+    echo "[INFO] Cloning repository from GitHub ($INSTALL_BRANCH) branch..."
     if [ -d "$INSTALL_DIR/.git" ]; then
-        # Update existing installation
         echo "[INFO] Repository already exists, updating..."
         cd "$INSTALL_DIR"
-        run_command "git fetch origin && git checkout dev && git pull origin dev" "Updating existing repository from dev branch"
+        run_command "git fetch origin" "Fetching repository updates"
+        run_command "git checkout $INSTALL_BRANCH" "Switching to $INSTALL_BRANCH branch"
+        run_command "git pull origin $INSTALL_BRANCH" "Updating repository from $INSTALL_BRANCH branch"
     else
-        # Fresh installation from dev branch
-        run_command "git clone -b dev --single-branch https://github.com/Biggus22/DCSBIOS-web.git '$INSTALL_DIR'" "Cloning repository from dev branch"
+        run_command "git clone -b $INSTALL_BRANCH --single-branch https://github.com/Biggus22/DCSBIOS-web.git '$INSTALL_DIR'" "Cloning repository from $INSTALL_BRANCH branch"
     fi
 fi
 
