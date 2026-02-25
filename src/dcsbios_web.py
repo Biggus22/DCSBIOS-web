@@ -6,6 +6,7 @@ Web-based management interface accessible from any device on the network
 
 from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_cors import CORS
+import datetime
 import json
 import os
 import subprocess
@@ -179,6 +180,7 @@ class DCSBIOSWebManager:
 
         self.auto_start = False
         self.scheduled_reboot_time = None
+        self.last_reboot_execution_date = None
         self.web_port = 5000  # Default web interface port
         self.serial_input_monitoring = False  # Whether to show DCS BIOS input stream in status messages
 
@@ -224,6 +226,7 @@ class DCSBIOSWebManager:
                     self.dcs_pc_ip = data.get("dcs_pc_ip", self.dcs_pc_ip)
                     self.auto_start = data.get("auto_start", False)
                     self.scheduled_reboot_time = data.get("scheduled_reboot_time", None)
+                    self.last_reboot_execution_date = data.get("last_reboot_execution_date")
                     self.web_port = data.get("web_port", self.web_port)
                     self.udp_port = data.get("udp_port", self.udp_port)
                     self.multicast_group = data.get("multicast_group", self.multicast_group)
@@ -248,6 +251,7 @@ class DCSBIOSWebManager:
                 "dcs_pc_ip": self.dcs_pc_ip,
                 "auto_start": self.auto_start,
                 "scheduled_reboot_time": self.scheduled_reboot_time,
+                "last_reboot_execution_date": self.last_reboot_execution_date,
                 "web_port": self.web_port,
                 "udp_port": self.udp_port,
                 "multicast_group": self.multicast_group,
@@ -415,22 +419,48 @@ manager = DCSBIOSWebManager()
 
 # Scheduled reboot checker
 def reboot_checker():
+    poll_interval_seconds = 300  # 5 minutes
+    last_check = datetime.datetime.now()
+
+    def window_reached(previous_ts: datetime.datetime, current_ts: datetime.datetime, target_time: datetime.time) -> bool:
+        """Return True if the target time occurred between previous_ts and current_ts (inclusive)."""
+        target_today = datetime.datetime.combine(current_ts.date(), target_time)
+        target_yesterday = target_today - datetime.timedelta(days=1)
+        return (previous_ts < target_today <= current_ts) or (previous_ts < target_yesterday <= current_ts)
+
     while True:
+        time.sleep(poll_interval_seconds)
+        now = datetime.datetime.now()
+
         if manager.scheduled_reboot_time:
-            current_time = time.strftime("%H:%M")
-            if current_time == manager.scheduled_reboot_time:
-                manager.add_message(f"Scheduled reboot at {current_time}")
+            try:
+                target_time = datetime.datetime.strptime(manager.scheduled_reboot_time, "%H:%M").time()
+            except ValueError:
+                manager.add_message(f"Invalid scheduled reboot time format: {manager.scheduled_reboot_time}")
+                last_check = now
+                continue
+
+            if window_reached(last_check, now, target_time):
+                today_str = now.strftime("%Y-%m-%d")
+                if manager.last_reboot_execution_date == today_str:
+                    last_check = now
+                    continue
+
+                manager.add_message(f"Scheduled reboot window reached ({manager.scheduled_reboot_time})")
                 if manager.running:
                     manager.stop()
                 try:
                     subprocess.run(["sudo", "uhubctl", "-l", "1-1", "-p", "2", "-a", "0"],
-                                 capture_output=True, timeout=5)
-                except:
+                                   capture_output=True, timeout=5)
+                except Exception:
                     pass
                 time.sleep(2)
+                manager.last_reboot_execution_date = today_str
+                manager.save_config()
                 subprocess.run(["sudo", "reboot"])
                 break
-        time.sleep(30)
+
+        last_check = now
 
 reboot_thread = threading.Thread(target=reboot_checker, daemon=True)
 reboot_thread.start()
