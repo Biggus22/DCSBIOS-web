@@ -13,6 +13,7 @@ Web-based management interface for DCS-BIOS serial controllers on Raspberry Pi. 
 - 🔍 **Serial Input Monitoring** - Monitor DCS BIOS input stream in real-time
 - 💾 **Client-Side Logging** - Download logs to your local computer
 - 🔄 **Auto-reconnect** - Handles USB disconnections gracefully
+- 🎛️ **Configurable Reconnect Policy** - Set retry attempts and delay from the web UI
 - ⚙️ **Easy Configuration** - Visual port selection and settings
 - 🚀 **Boot Service** - Optional headless operation
 - 📱 **Mobile Friendly** - Responsive design for all screen sizes
@@ -173,6 +174,7 @@ http://<raspberry-pi-ip>:5000
 - **DCS PC IP**: IP address of your Windows PC running DCS
 - **Auto-start**: Automatically start manager when accessing web interface
 - **Scheduled Reboot**: Optional daily reboot for long-term stability
+- **Device Reconnect**: Configure retry attempts and retry delay before giving up on a failed device
 
 ### System Controls
 

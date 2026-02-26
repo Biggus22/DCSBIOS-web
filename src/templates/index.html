@@ -543,6 +543,15 @@
                         </div>
 
                         <div class="setting-item">
+                            <div class="setting-label">Device Reconnect</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                <input type="number" id="reconnectAttemptsInput" min="1" max="20" placeholder="Attempts" value="5">
+                                <input type="number" id="reconnectDelayInput" min="1" max="60" placeholder="Delay (s)" value="3">
+                            </div>
+                            <button class="btn-primary btn-small" style="margin-top: 8px;" id="saveReconnectBtn">Save</button>
+                        </div>
+
+                        <div class="setting-item">
                             <div class="setting-label">Monitor DCS BIOS Input Stream</div>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="serialInputMonitoringToggle">
@@ -636,7 +645,9 @@
             updateInterval: 2000, // Default refresh rate
             webPort: 5000, // Default web interface port
             udpPort: 5010, // Default UDP port for multicast
-            multicastGroup: '239.255.50.10' // Default multicast group
+            multicastGroup: '239.255.50.10', // Default multicast group
+            reconnectAttempts: 5, // Default reconnect attempts per device
+            reconnectDelay: 3 // Default reconnect delay (seconds)
         };
 
         function renderPowerWarning(power) {
@@ -724,6 +735,14 @@
                 // Update auto-start
                 document.getElementById('autoStartStatus').textContent = data.auto_start ? 'Enabled' : 'Disabled';
                 document.getElementById('autoStartToggle').checked = data.auto_start;
+
+                // Update reconnect settings
+                if (!document.getElementById('reconnectAttemptsInput').matches(':focus')) {
+                    document.getElementById('reconnectAttemptsInput').value = data.max_reconnect_attempts || 5;
+                }
+                if (!document.getElementById('reconnectDelayInput').matches(':focus')) {
+                    document.getElementById('reconnectDelayInput').value = data.reconnect_delay_seconds || 3;
+                }
 
                 // Update system information
                 if (data.system) {
@@ -1118,6 +1137,41 @@
             }
         });
 
+        // Save reconnect settings
+        document.getElementById('saveReconnectBtn').addEventListener('click', async () => {
+            const attempts = parseInt(document.getElementById('reconnectAttemptsInput').value);
+            const delay = parseInt(document.getElementById('reconnectDelayInput').value);
+
+            if (!attempts || attempts < 1 || attempts > 20) {
+                alert('Please enter valid reconnect attempts (1-20)');
+                return;
+            }
+
+            if (!delay || delay < 1 || delay > 60) {
+                alert('Please enter valid reconnect delay in seconds (1-60)');
+                return;
+            }
+
+            const response = await fetch('/api/settings/reconnect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    max_reconnect_attempts: attempts,
+                    reconnect_delay_seconds: delay
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                config.reconnectAttempts = attempts;
+                config.reconnectDelay = delay;
+                await updateStatus();
+                alert(`Reconnect settings saved: ${attempts} attempts, ${delay}s delay`);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+
         // Toggle auto-start
         document.getElementById('autoStartToggle').addEventListener('change', async () => {
             const response = await fetch('/api/settings/auto_start', { method: 'POST' });
@@ -1337,6 +1391,12 @@
         document.getElementById('udpPortInput').addEventListener('focus', () => setInputActive(true));
         document.getElementById('udpPortInput').addEventListener('blur', () => setInputActive(false));
 
+        document.getElementById('reconnectAttemptsInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('reconnectAttemptsInput').addEventListener('blur', () => setInputActive(false));
+
+        document.getElementById('reconnectDelayInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('reconnectDelayInput').addEventListener('blur', () => setInputActive(false));
+
         // Separate update functions for different sections
         async function updateStatusMessages() {
             // Only update status messages part of the UI
@@ -1409,6 +1469,14 @@
                 // Update auto-start
                 document.getElementById('autoStartStatus').textContent = data.auto_start ? 'Enabled' : 'Disabled';
                 document.getElementById('autoStartToggle').checked = data.auto_start;
+
+                // Update reconnect settings
+                if (!document.getElementById('reconnectAttemptsInput').matches(':focus')) {
+                    document.getElementById('reconnectAttemptsInput').value = data.max_reconnect_attempts || 5;
+                }
+                if (!document.getElementById('reconnectDelayInput').matches(':focus')) {
+                    document.getElementById('reconnectDelayInput').value = data.reconnect_delay_seconds || 3;
+                }
 
                 // Update system information
                 if (data.system) {
