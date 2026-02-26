@@ -277,6 +277,13 @@
             color: #1e3c72;
         }
 
+        .setting-description {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
+            line-height: 1.4;
+        }
+
         input[type="text"], input[type="number"], input[type="time"] {
             width: 100%;
             padding: 8px;
@@ -545,8 +552,11 @@
                         <div class="setting-item">
                             <div class="setting-label">Device Reconnect</div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                                <input type="number" id="reconnectAttemptsInput" min="1" max="20" placeholder="Attempts" value="5">
-                                <input type="number" id="reconnectDelayInput" min="1" max="60" placeholder="Delay (s)" value="3">
+                                <input type="number" id="reconnectAttemptsInput" min="1" max="20" placeholder="Max attempts" value="5">
+                                <input type="number" id="reconnectDelayInput" min="1" max="60" placeholder="Delay (seconds)" value="3">
+                            </div>
+                            <div class="setting-description">
+                                Max attempts = how many reconnect tries before giving up. Delay = seconds to wait between retries.
                             </div>
                             <button class="btn-primary btn-small" style="margin-top: 8px;" id="saveReconnectBtn">Save</button>
                         </div>
