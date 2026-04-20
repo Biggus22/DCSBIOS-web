@@ -185,6 +185,9 @@ class DCSBIOSWebManager:
         self.serial_input_monitoring = False  # Whether to show DCS BIOS input stream in status messages
         self.max_reconnect_attempts = 5
         self.reconnect_delay_seconds = 3
+        self.serial_open_spacing_seconds = 0.5
+        self.serial_open_lock = threading.Lock()
+        self.next_serial_open_time = 0.0
 
         self.load_config()
 
@@ -235,6 +238,7 @@ class DCSBIOSWebManager:
                     self.serial_input_monitoring = data.get("serial_input_monitoring", False)
                     self.max_reconnect_attempts = data.get("max_reconnect_attempts", self.max_reconnect_attempts)
                     self.reconnect_delay_seconds = data.get("reconnect_delay_seconds", self.reconnect_delay_seconds)
+                    self.serial_open_spacing_seconds = data.get("serial_open_spacing_seconds", self.serial_open_spacing_seconds)
                 self.add_message(f"Loaded {len(self.devices)} devices from config")
                 self.add_message(f"DCS PC IP: {self.dcs_pc_ip}")
                 self.add_message(f"Auto start: {self.auto_start}")
@@ -243,7 +247,9 @@ class DCSBIOSWebManager:
                 self.add_message(f"UDP port: {self.udp_port}")
                 self.add_message(f"Multicast group: {self.multicast_group}")
                 self.add_message(f"Serial input monitoring: {self.serial_input_monitoring}")
-                self.add_message(f"Reconnect attempts: {self.max_reconnect_attempts}, delay: {self.reconnect_delay_seconds}s")
+                self.add_message(
+                    f"Reconnect attempts: {self.max_reconnect_attempts}, delay: {self.reconnect_delay_seconds}s, open spacing: {self.serial_open_spacing_seconds:g}s"
+                )
             except Exception as e:
                 self.add_message(f"Error loading config: {e}")
         else:
@@ -262,13 +268,37 @@ class DCSBIOSWebManager:
                 "multicast_group": self.multicast_group,
                 "serial_input_monitoring": self.serial_input_monitoring,
                 "max_reconnect_attempts": self.max_reconnect_attempts,
-                "reconnect_delay_seconds": self.reconnect_delay_seconds
+                "reconnect_delay_seconds": self.reconnect_delay_seconds,
+                "serial_open_spacing_seconds": self.serial_open_spacing_seconds
             }
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
-            self.add_message(f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}, Serial Input Monitoring: {self.serial_input_monitoring}, Reconnect Attempts: {self.max_reconnect_attempts}, Reconnect Delay: {self.reconnect_delay_seconds}s")
+            self.add_message(
+                f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}, Serial Input Monitoring: {self.serial_input_monitoring}, Reconnect Attempts: {self.max_reconnect_attempts}, Reconnect Delay: {self.reconnect_delay_seconds}s, Serial Open Spacing: {self.serial_open_spacing_seconds:g}s"
+            )
         except Exception as e:
             self.add_message(f"Error saving config: {e}")
+
+    def wait_for_serial_open_slot(self):
+        spacing = max(0.0, float(self.serial_open_spacing_seconds))
+        if spacing == 0:
+            return self.running
+
+        while self.running:
+            with self.serial_open_lock:
+                now = time.time()
+                wait_time = self.next_serial_open_time - now
+                if wait_time <= 0:
+                    self.next_serial_open_time = now + spacing
+                    return True
+            time.sleep(min(wait_time, 0.05) if wait_time > 0 else 0.01)
+
+        return False
+
+    def open_serial_port(self, device: DeviceConfig):
+        if not self.wait_for_serial_open_slot():
+            raise RuntimeError("Manager stopped before serial port open")
+        return serial.Serial(device.port, device.baudrate, timeout=0.1)
 
     def setup_udp(self):
         try:
@@ -297,7 +327,7 @@ class DCSBIOSWebManager:
         while self.running:
             try:
                 if ser is None or not ser.is_open:
-                    ser = serial.Serial(device.port, device.baudrate, timeout=0.1)
+                    ser = self.open_serial_port(device)
                     consecutive_failures = 0
                     device.status = "Connected"
                     self.add_message(f"{device.name} connected on {device.port}")
@@ -393,7 +423,7 @@ class DCSBIOSWebManager:
                     continue
 
                 try:
-                    entry["port"] = serial.Serial(device.port, device.baudrate, timeout=0.1)
+                    entry["port"] = self.open_serial_port(device)
                     entry["failures"] = 0
                     entry["next_retry"] = 0.0
                     device.status = "Connected"
@@ -464,7 +494,14 @@ class DCSBIOSWebManager:
             return False
 
         self.running = True
+        with self.serial_open_lock:
+            self.next_serial_open_time = time.time()
         self.setup_udp()
+
+        if self.serial_open_spacing_seconds > 0:
+            self.add_message(
+                f"Pacing serial open attempts by {self.serial_open_spacing_seconds:g}s"
+            )
 
         udp_thread = threading.Thread(target=self.udp_to_serial, daemon=True)
         udp_thread.start()
@@ -572,6 +609,7 @@ def api_status():
         'multicast_group': manager.multicast_group,
         'max_reconnect_attempts': manager.max_reconnect_attempts,
         'reconnect_delay_seconds': manager.reconnect_delay_seconds,
+        'serial_open_spacing_seconds': manager.serial_open_spacing_seconds,
         'serial_input_monitoring': manager.serial_input_monitoring,
         'devices': [d.to_dict() for d in manager.devices],
         'messages': manager.status_messages[-20:],
@@ -686,6 +724,7 @@ def api_set_reconnect_settings():
     data = request.json
     attempts = data.get('max_reconnect_attempts')
     delay = data.get('reconnect_delay_seconds')
+    spacing = data.get('serial_open_spacing_seconds', manager.serial_open_spacing_seconds)
 
     if not isinstance(attempts, int) or attempts < 1 or attempts > 20:
         return jsonify({'success': False, 'error': 'Invalid reconnect attempts. Must be between 1 and 20'})
@@ -693,10 +732,16 @@ def api_set_reconnect_settings():
     if not isinstance(delay, int) or delay < 1 or delay > 60:
         return jsonify({'success': False, 'error': 'Invalid reconnect delay. Must be between 1 and 60 seconds'})
 
+    if isinstance(spacing, bool) or not isinstance(spacing, (int, float)) or spacing < 0 or spacing > 10:
+        return jsonify({'success': False, 'error': 'Invalid serial open spacing. Must be between 0 and 10 seconds'})
+
     manager.max_reconnect_attempts = attempts
     manager.reconnect_delay_seconds = delay
+    manager.serial_open_spacing_seconds = float(spacing)
     manager.save_config()
-    manager.add_message(f"Reconnect settings updated: {attempts} attempts, {delay}s delay")
+    manager.add_message(
+        f"Reconnect settings updated: {attempts} attempts, {delay}s delay, {manager.serial_open_spacing_seconds:g}s open spacing"
+    )
     return jsonify({'success': True})
 
 @app.route('/api/settings/schedule_reboot', methods=['POST'])
