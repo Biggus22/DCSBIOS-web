@@ -579,6 +579,66 @@ app = Flask(__name__)
 CORS(app)
 manager = DCSBIOSWebManager()
 
+
+def launch_system_power_action(command, action_label: str):
+    """Launch a system power action and report whether the OS accepted it."""
+    if os.name == 'nt':
+        return False, f"{action_label} is only supported on Linux targets"
+
+    geteuid = getattr(os, 'geteuid', None)
+    if callable(geteuid) and geteuid() == 0:
+        full_command = command
+    else:
+        full_command = ['sudo', '-n', *command]
+
+    try:
+        process = subprocess.Popen(
+            full_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        time.sleep(0.5)
+        returncode = process.poll()
+
+        if returncode is not None and returncode != 0:
+            stdout, stderr = process.communicate(timeout=1)
+            error_output = (stderr or stdout or '').strip()
+            if not error_output:
+                error_output = f"command exited with status {returncode}"
+            return False, error_output
+
+        return True, None
+    except FileNotFoundError as exc:
+        return False, str(exc)
+    except Exception as exc:
+        return False, str(exc)
+
+
+def request_system_power_action(action_label: str, command):
+    """Stop the manager, attempt the power action, and surface failures."""
+    was_running = manager.running
+    if was_running:
+        manager.stop()
+
+    manager.add_message(f"{action_label} requested")
+    time.sleep(1)
+
+    success, error = launch_system_power_action(command, action_label)
+    if success:
+        manager.add_message(f"{action_label} command accepted by the OS")
+        return True, None
+
+    manager.add_message(f"{action_label} failed: {error}")
+    if was_running:
+        restarted = manager.start()
+        if restarted:
+            manager.add_message(f"Manager restarted after {action_label.lower()} failed")
+        else:
+            manager.add_message(f"Manager could not be restarted after {action_label.lower()} failed")
+
+    return False, error
+
 # Scheduled reboot checker
 def reboot_checker():
     poll_interval_seconds = 300  # 5 minutes
@@ -617,10 +677,13 @@ def reboot_checker():
                 except Exception:
                     pass
                 time.sleep(2)
-                manager.last_reboot_execution_date = today_str
-                manager.save_config()
-                subprocess.run(["sudo", "reboot"])
-                break
+                success, error = launch_system_power_action(["systemctl", "reboot"], "Scheduled reboot")
+                if success:
+                    manager.last_reboot_execution_date = today_str
+                    manager.save_config()
+                    break
+
+                manager.add_message(f"Scheduled reboot failed: {error}")
 
         last_check = now
 
@@ -900,21 +963,19 @@ def api_set_low_voltage_logging():
 
 @app.route('/api/reboot', methods=['POST'])
 def api_reboot():
-    if manager.running:
-        manager.stop()
-    manager.add_message("Rebooting system...")
-    time.sleep(2)
-    subprocess.Popen(["sudo", "reboot"])
-    return jsonify({'success': True})
+    success, error = request_system_power_action("Rebooting system", ["systemctl", "reboot"])
+    if success:
+        return jsonify({'success': True})
+
+    return jsonify({'success': False, 'error': error}), 500
 
 @app.route('/api/shutdown', methods=['POST'])
 def api_shutdown():
-    if manager.running:
-        manager.stop()
-    manager.add_message("Shutting down system...")
-    time.sleep(2)
-    subprocess.Popen(["sudo", "shutdown", "-h", "now"])
-    return jsonify({'success': True})
+    success, error = request_system_power_action("Shutting down system", ["systemctl", "poweroff"])
+    if success:
+        return jsonify({'success': True})
+
+    return jsonify({'success': False, 'error': error}), 500
 
 @app.route('/api/ports')
 def api_list_ports():

@@ -1374,20 +1374,48 @@
             await updateStatus();
         });
 
+        async function triggerSystemPowerAction(url, successMessage) {
+            try {
+                const response = await fetch(url, { method: 'POST' });
+                let data = null;
+
+                try {
+                    data = await response.json();
+                } catch (error) {
+                    data = null;
+                }
+
+                if (!response.ok || !data || !data.success) {
+                    const errorMessage = data && data.error
+                        ? data.error
+                        : `Request failed with status ${response.status}`;
+                    throw new Error(errorMessage);
+                }
+
+                alert(successMessage);
+            } catch (error) {
+                alert(`System action failed: ${error.message}`);
+            }
+        }
+
 
         // Reboot
         document.getElementById('rebootBtn').addEventListener('click', async () => {
             if (confirm('Are you sure you want to reboot the Raspberry Pi?')) {
-                await fetch('/api/reboot', { method: 'POST' });
-                alert('Rebooting... The page will be unavailable for a few minutes.');
+                await triggerSystemPowerAction(
+                    '/api/reboot',
+                    'Rebooting... The page will be unavailable for a few minutes.'
+                );
             }
         });
 
         // Shutdown
         document.getElementById('shutdownBtn').addEventListener('click', async () => {
             if (confirm('Are you sure you want to shutdown the Raspberry Pi?')) {
-                await fetch('/api/shutdown', { method: 'POST' });
-                alert('Shutting down... The page will be unavailable.');
+                await triggerSystemPowerAction(
+                    '/api/shutdown',
+                    'Shutting down... The page will be unavailable.'
+                );
             }
         });
 
