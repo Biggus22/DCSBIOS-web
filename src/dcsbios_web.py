@@ -616,28 +616,30 @@ def launch_system_power_action(command, action_label: str):
 
 
 def request_system_power_action(action_label: str, command):
-    """Stop the manager, attempt the power action, and surface failures."""
+    """Stop the manager, then trigger the power action after the HTTP response returns."""
     was_running = manager.running
     if was_running:
         manager.stop()
 
     manager.add_message(f"{action_label} requested")
-    time.sleep(1)
 
-    success, error = launch_system_power_action(command, action_label)
-    if success:
-        manager.add_message(f"{action_label} command accepted by the OS")
-        return True, None
+    def worker():
+        time.sleep(1)
+        success, error = launch_system_power_action(command, action_label)
+        if success:
+            manager.add_message(f"{action_label} command accepted by the OS")
+            return
 
-    manager.add_message(f"{action_label} failed: {error}")
-    if was_running:
-        restarted = manager.start()
-        if restarted:
-            manager.add_message(f"Manager restarted after {action_label.lower()} failed")
-        else:
-            manager.add_message(f"Manager could not be restarted after {action_label.lower()} failed")
+        manager.add_message(f"{action_label} failed: {error}")
+        if was_running:
+            restarted = manager.start()
+            if restarted:
+                manager.add_message(f"Manager restarted after {action_label.lower()} failed")
+            else:
+                manager.add_message(f"Manager could not be restarted after {action_label.lower()} failed")
 
-    return False, error
+    threading.Thread(target=worker, daemon=True).start()
+    return True, None
 
 # Scheduled reboot checker
 def reboot_checker():
