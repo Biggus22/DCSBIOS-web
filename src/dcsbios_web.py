@@ -186,6 +186,9 @@ class DCSBIOSWebManager:
         self.max_reconnect_attempts = 5
         self.reconnect_delay_seconds = 3
         self.serial_open_spacing_seconds = 0.5
+        self.low_voltage_event_logging = False
+        self.last_low_voltage_detected_at = None
+        self.last_power_status = None
         self.serial_open_lock = threading.Lock()
         self.next_serial_open_time = 0.0
 
@@ -222,6 +225,37 @@ class DCSBIOSWebManager:
 
         return readable
 
+    def current_timestamp_iso(self) -> str:
+        return datetime.datetime.now().astimezone().isoformat(timespec='seconds')
+
+    def current_timestamp_label(self) -> str:
+        return datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+    def update_power_status(self):
+        power = get_throttled_status()
+        if power is None:
+            self.last_power_status = None
+            return None
+
+        previous_power = self.last_power_status or {}
+        new_undervoltage_event = (
+            (power.get('undervoltage_now') and not previous_power.get('undervoltage_now', False))
+            or (power.get('undervoltage_occurred') and not previous_power.get('undervoltage_occurred', False))
+        )
+
+        if new_undervoltage_event:
+            self.last_low_voltage_detected_at = self.current_timestamp_iso()
+            if self.low_voltage_event_logging:
+                self.add_message(
+                    f"Low voltage detected at {self.current_timestamp_label()} ({power.get('raw', 'unknown')})"
+                )
+            self.save_config(emit_message=False)
+
+        power['last_low_voltage_detected_at'] = self.last_low_voltage_detected_at
+        power['low_voltage_event_logging'] = self.low_voltage_event_logging
+        self.last_power_status = dict(power)
+        return power
+
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
             try:
@@ -239,6 +273,8 @@ class DCSBIOSWebManager:
                     self.max_reconnect_attempts = data.get("max_reconnect_attempts", self.max_reconnect_attempts)
                     self.reconnect_delay_seconds = data.get("reconnect_delay_seconds", self.reconnect_delay_seconds)
                     self.serial_open_spacing_seconds = data.get("serial_open_spacing_seconds", self.serial_open_spacing_seconds)
+                    self.low_voltage_event_logging = data.get("low_voltage_event_logging", self.low_voltage_event_logging)
+                    self.last_low_voltage_detected_at = data.get("last_low_voltage_detected_at")
                 self.add_message(f"Loaded {len(self.devices)} devices from config")
                 self.add_message(f"DCS PC IP: {self.dcs_pc_ip}")
                 self.add_message(f"Auto start: {self.auto_start}")
@@ -250,12 +286,13 @@ class DCSBIOSWebManager:
                 self.add_message(
                     f"Reconnect attempts: {self.max_reconnect_attempts}, delay: {self.reconnect_delay_seconds}s, open spacing: {self.serial_open_spacing_seconds:g}s"
                 )
+                self.add_message(f"Low voltage event logging: {self.low_voltage_event_logging}")
             except Exception as e:
                 self.add_message(f"Error loading config: {e}")
         else:
             self.add_message("No config file found, starting fresh")
 
-    def save_config(self):
+    def save_config(self, emit_message: bool = True):
         try:
             data = {
                 "devices": [d.to_dict() for d in self.devices],
@@ -269,13 +306,16 @@ class DCSBIOSWebManager:
                 "serial_input_monitoring": self.serial_input_monitoring,
                 "max_reconnect_attempts": self.max_reconnect_attempts,
                 "reconnect_delay_seconds": self.reconnect_delay_seconds,
-                "serial_open_spacing_seconds": self.serial_open_spacing_seconds
+                "serial_open_spacing_seconds": self.serial_open_spacing_seconds,
+                "low_voltage_event_logging": self.low_voltage_event_logging,
+                "last_low_voltage_detected_at": self.last_low_voltage_detected_at
             }
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
-            self.add_message(
-                f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}, Serial Input Monitoring: {self.serial_input_monitoring}, Reconnect Attempts: {self.max_reconnect_attempts}, Reconnect Delay: {self.reconnect_delay_seconds}s, Serial Open Spacing: {self.serial_open_spacing_seconds:g}s"
-            )
+            if emit_message:
+                self.add_message(
+                    f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}, Serial Input Monitoring: {self.serial_input_monitoring}, Reconnect Attempts: {self.max_reconnect_attempts}, Reconnect Delay: {self.reconnect_delay_seconds}s, Serial Open Spacing: {self.serial_open_spacing_seconds:g}s, Low Voltage Logging: {self.low_voltage_event_logging}"
+                )
         except Exception as e:
             self.add_message(f"Error saving config: {e}")
 
@@ -599,6 +639,7 @@ def index():
 
 @app.route('/api/status')
 def api_status():
+    power_status = manager.update_power_status()
     return jsonify({
         'running': manager.running,
         'dcs_pc_ip': manager.dcs_pc_ip,
@@ -610,13 +651,14 @@ def api_status():
         'max_reconnect_attempts': manager.max_reconnect_attempts,
         'reconnect_delay_seconds': manager.reconnect_delay_seconds,
         'serial_open_spacing_seconds': manager.serial_open_spacing_seconds,
+        'low_voltage_event_logging': manager.low_voltage_event_logging,
         'serial_input_monitoring': manager.serial_input_monitoring,
         'devices': [d.to_dict() for d in manager.devices],
         'messages': manager.status_messages[-20:],
         'system': {
             'cpu_temp': get_cpu_temperature(),
             'memory': get_memory_info(),
-            'power': get_throttled_status()
+            'power': power_status
         }
     })
 
@@ -659,13 +701,25 @@ def api_add_device():
 def api_delete_device(index):
     if 0 <= index < len(manager.devices):
         device = manager.devices[index]
-        if manager.running and device.enabled:
-            return jsonify({'success': False, 'error': 'Stop manager first or disable device'})
+        restart_required = manager.running and device.enabled
+
+        if restart_required:
+            manager.add_message(f"Stopping manager to delete device: {device.name}")
+            manager.stop()
 
         manager.devices.pop(index)
         manager.save_config()
         manager.add_message(f"Deleted device: {device.name}")
-        return jsonify({'success': True})
+
+        restarted = False
+        if restart_required:
+            restarted = manager.start()
+            if restarted:
+                manager.add_message(f"Manager restarted after deleting device: {device.name}")
+            else:
+                manager.add_message(f"Manager could not be restarted after deleting device: {device.name}")
+
+        return jsonify({'success': True, 'restarted': restarted})
     return jsonify({'success': False, 'error': 'Invalid device index'})
 
 @app.route('/api/device/update/<int:index>', methods=['POST'])
@@ -825,6 +879,21 @@ def api_set_serial_input_monitoring():
         manager.save_config()
         manager.add_message(f"Serial input monitoring {'enabled' if manager.serial_input_monitoring else 'disabled'}")
         return jsonify({'success': True, 'enabled': manager.serial_input_monitoring})
+
+    return jsonify({'success': False, 'error': 'Missing enabled flag'})
+
+@app.route('/api/settings/low_voltage_logging', methods=['POST'])
+def api_set_low_voltage_logging():
+    data = request.json
+    enabled = data.get('enabled')
+
+    if enabled is not None:
+        manager.low_voltage_event_logging = bool(enabled)
+        manager.save_config()
+        manager.add_message(
+            f"Low voltage event logging {'enabled' if manager.low_voltage_event_logging else 'disabled'}"
+        )
+        return jsonify({'success': True, 'enabled': manager.low_voltage_event_logging})
 
     return jsonify({'success': False, 'error': 'Missing enabled flag'})
 
