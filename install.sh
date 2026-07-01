@@ -161,12 +161,29 @@ cd "$INSTALL_DIR"
 
 # Make scripts executable
 echo
-echo "[6/9] Setting executable permissions on scripts..."
+echo "[6/10] Setting executable permissions on scripts..."
 run_command "chmod +x scripts/*.sh" "Setting executable permissions"
+
+# Disable USB autosuspend for serial devices
+echo
+echo "[7/10] Disabling USB autosuspend for serial devices..."
+if [[ -d /etc/udev/rules.d ]]; then
+    if [ -f "scripts/99-dcsbios-usb-power.rules" ]; then
+        run_command "sudo cp scripts/99-dcsbios-usb-power.rules /etc/udev/rules.d/99-dcsbios-usb-power.rules" "Copying udev rule"
+        run_command "sudo chmod 644 /etc/udev/rules.d/99-dcsbios-usb-power.rules" "Setting udev rule permissions"
+        run_command "sudo udevadm control --reload-rules" "Reloading udev rules"
+        run_command "sudo udevadm trigger --subsystem-match=usb --subsystem-match=tty" "Triggering udev for USB and tty devices"
+        echo "[INFO] USB autosuspend disabled for DCS-BIOS serial devices"
+    else
+        echo "[WARNING] udev rules file not found at scripts/99-dcsbios-usb-power.rules"
+    fi
+else
+    echo "[INFO] udev not found — skipping USB power management (non-Linux system)"
+fi
 
 # Create Python virtual environment and install dependencies
 echo
-echo "[7/9] Setting up Python virtual environment and installing dependencies..."
+echo "[8/10] Setting up Python virtual environment and installing dependencies..."
 echo "[INFO] Creating virtual environment..."
 run_command "python3 -m venv venv" "Creating Python virtual environment"
 
@@ -187,12 +204,12 @@ fi
 
 # Create the configuration directory
 echo
-echo "[8/9] Creating configuration directory..."
+echo "[9/10] Creating configuration directory..."
 run_command "mkdir -p '$HOME/.dcsbios'" "Creating config directory"
 
 # Set up systemd service for auto-start on boot
 echo
-echo "[9/9] Setting up systemd service for auto-start on boot..."
+echo "[10/10] Setting up systemd service for auto-start on boot..."
 SERVICE_FILE="/etc/systemd/system/dcsbios.service"
 
 # Create the systemd service file

@@ -28,7 +28,7 @@ def get_cpu_temperature():
             return round(temp, 1)
     except:
         pass
-    
+
     # Fallback: try other thermal zones
     try:
         for i in range(5):
@@ -40,10 +40,10 @@ def get_cpu_temperature():
                 continue
     except:
         pass
-    
+
     # Try using vcgencmd (Raspberry Pi specific)
     try:
-        result = subprocess.run(['vcgencmd', 'measure_temp'], 
+        result = subprocess.run(['vcgencmd', 'measure_temp'],
                               capture_output=True, text=True, timeout=2)
         if result.returncode == 0:
             # Output format: "temp=45.6'C"
@@ -53,7 +53,7 @@ def get_cpu_temperature():
                 return round(float(temp_value), 1)
     except:
         pass
-    
+
     return None
 
 def get_memory_info():
@@ -71,7 +71,7 @@ def get_memory_info():
                         mem_info[key] = int(value)
                     except:
                         pass
-            
+
             if 'MemTotal' in mem_info and 'MemAvailable' in mem_info:
                 total_mb = mem_info['MemTotal'] // 1024
                 available_mb = mem_info['MemAvailable'] // 1024
@@ -84,7 +84,7 @@ def get_memory_info():
                 }
     except:
         pass
-    
+
     return None
 
 def get_throttled_status():
@@ -131,6 +131,8 @@ HOME_DIR = os.path.expanduser("~")
 CONFIG_DIR = os.path.join(HOME_DIR, ".dcsbios")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 os.makedirs(CONFIG_DIR, exist_ok=True)
+
+XHCI_RESET_SCRIPT = "/usr/local/sbin/xhci-reset"
 
 class DeviceConfig:
     def __init__(self, name: str, port: str, baudrate: int = 250000, enabled: bool = True):
@@ -192,7 +194,18 @@ class DCSBIOSWebManager:
         self.serial_open_lock = threading.Lock()
         self.next_serial_open_time = 0.0
 
+        # USB watchdog configuration
+        self.xhci_watchdog_enabled = True
+        self.xhci_watchdog_check_interval = 60    # seconds between checks
+        self.xhci_watchdog_error_threshold = 300  # seconds all devices must be errored before reset
+        self.xhci_reset_count = 0                 # total resets performed this session
+        self.xhci_last_reset_at = None            # timestamp of last reset
+
         self.load_config()
+
+        # Start USB watchdog thread
+        watchdog_thread = threading.Thread(target=self.usb_watchdog, daemon=True)
+        watchdog_thread.start()
 
     def add_message(self, msg: str):
         timestamp = time.strftime("%H:%M:%S")
@@ -275,6 +288,8 @@ class DCSBIOSWebManager:
                     self.serial_open_spacing_seconds = data.get("serial_open_spacing_seconds", self.serial_open_spacing_seconds)
                     self.low_voltage_event_logging = data.get("low_voltage_event_logging", self.low_voltage_event_logging)
                     self.last_low_voltage_detected_at = data.get("last_low_voltage_detected_at")
+                    self.xhci_watchdog_enabled = data.get("xhci_watchdog_enabled", self.xhci_watchdog_enabled)
+                    self.xhci_watchdog_error_threshold = data.get("xhci_watchdog_error_threshold", self.xhci_watchdog_error_threshold)
                 self.add_message(f"Loaded {len(self.devices)} devices from config")
                 self.add_message(f"DCS PC IP: {self.dcs_pc_ip}")
                 self.add_message(f"Auto start: {self.auto_start}")
@@ -287,6 +302,10 @@ class DCSBIOSWebManager:
                     f"Reconnect attempts: {self.max_reconnect_attempts}, delay: {self.reconnect_delay_seconds}s, open spacing: {self.serial_open_spacing_seconds:g}s"
                 )
                 self.add_message(f"Low voltage event logging: {self.low_voltage_event_logging}")
+                self.add_message(
+                    f"USB watchdog: {'enabled' if self.xhci_watchdog_enabled else 'disabled'}, "
+                    f"threshold: {self.xhci_watchdog_error_threshold}s"
+                )
             except Exception as e:
                 self.add_message(f"Error loading config: {e}")
         else:
@@ -308,16 +327,140 @@ class DCSBIOSWebManager:
                 "reconnect_delay_seconds": self.reconnect_delay_seconds,
                 "serial_open_spacing_seconds": self.serial_open_spacing_seconds,
                 "low_voltage_event_logging": self.low_voltage_event_logging,
-                "last_low_voltage_detected_at": self.last_low_voltage_detected_at
+                "last_low_voltage_detected_at": self.last_low_voltage_detected_at,
+                "xhci_watchdog_enabled": self.xhci_watchdog_enabled,
+                "xhci_watchdog_error_threshold": self.xhci_watchdog_error_threshold,
             }
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
             if emit_message:
                 self.add_message(
-                    f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}, Serial Input Monitoring: {self.serial_input_monitoring}, Reconnect Attempts: {self.max_reconnect_attempts}, Reconnect Delay: {self.reconnect_delay_seconds}s, Serial Open Spacing: {self.serial_open_spacing_seconds:g}s, Low Voltage Logging: {self.low_voltage_event_logging}"
+                    f"Config saved - Web Port: {self.web_port}, DCS IP: {self.dcs_pc_ip}, Auto Start: {self.auto_start}, "
+                    f"Scheduled Reboot: {self.scheduled_reboot_time}, UDP Port: {self.udp_port}, Multicast: {self.multicast_group}, "
+                    f"Serial Input Monitoring: {self.serial_input_monitoring}, Reconnect Attempts: {self.max_reconnect_attempts}, "
+                    f"Reconnect Delay: {self.reconnect_delay_seconds}s, Serial Open Spacing: {self.serial_open_spacing_seconds:g}s, "
+                    f"Low Voltage Logging: {self.low_voltage_event_logging}, "
+                    f"USB Watchdog: {'enabled' if self.xhci_watchdog_enabled else 'disabled'}, "
+                    f"Watchdog Threshold: {self.xhci_watchdog_error_threshold}s"
                 )
         except Exception as e:
             self.add_message(f"Error saving config: {e}")
+
+    # -------------------------------------------------------------------------
+    # USB / xHCI watchdog
+    # -------------------------------------------------------------------------
+
+    def reset_xhci_controller(self) -> bool:
+        """
+        Reset the xHCI USB controller via the dedicated root-owned wrapper script.
+        The script is /usr/local/sbin/xhci-reset and is the only thing brad can
+        sudo without a password, limiting the attack surface to that one action.
+        """
+        if not os.path.exists(XHCI_RESET_SCRIPT):
+            self.add_message(
+                f"xHCI reset script not found at {XHCI_RESET_SCRIPT} — skipping reset. "
+                "Run the setup commands to install it."
+            )
+            return False
+
+        self.add_message("Triggering xHCI controller reset via wrapper script...")
+        try:
+            result = subprocess.run(
+                ['sudo', '-n', XHCI_RESET_SCRIPT],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0:
+                self.xhci_reset_count += 1
+                self.xhci_last_reset_at = self.current_timestamp_iso()
+                self.add_message(
+                    f"xHCI reset complete (total resets this session: {self.xhci_reset_count})"
+                )
+                return True
+            else:
+                self.add_message(
+                    f"xHCI reset script failed (exit {result.returncode}): "
+                    f"{(result.stderr or result.stdout or '').strip()}"
+                )
+                return False
+        except subprocess.TimeoutExpired:
+            self.add_message("xHCI reset script timed out after 30s")
+            return False
+        except Exception as e:
+            self.add_message(f"xHCI reset failed: {e}")
+            return False
+
+    def usb_watchdog(self):
+        """
+        Background thread — monitors device error states and triggers an xHCI
+        controller reset if all enabled devices remain in error for longer than
+        xhci_watchdog_error_threshold seconds.
+
+        After a successful reset the manager is restarted so serial threads
+        reconnect to the freshly-enumerated devices.
+        """
+        all_errored_since = None
+
+        while True:
+            time.sleep(self.xhci_watchdog_check_interval)
+
+            if not self.xhci_watchdog_enabled:
+                all_errored_since = None
+                continue
+
+            if not self.running:
+                all_errored_since = None
+                continue
+
+            enabled = [d for d in self.devices if d.enabled]
+            if not enabled:
+                all_errored_since = None
+                continue
+
+            all_errored = all(d.status == "Error" for d in enabled)
+
+            if all_errored:
+                if all_errored_since is None:
+                    all_errored_since = time.time()
+                    self.add_message(
+                        f"USB watchdog: all {len(enabled)} device(s) in error state — "
+                        f"will reset xHCI in {self.xhci_watchdog_error_threshold}s if not recovered"
+                    )
+                elif time.time() - all_errored_since >= self.xhci_watchdog_error_threshold:
+                    elapsed = int(time.time() - all_errored_since)
+                    self.add_message(
+                        f"USB watchdog: all devices stuck in error for {elapsed}s — "
+                        "stopping manager and resetting xHCI controller"
+                    )
+                    was_running = self.running
+                    self.stop()
+                    time.sleep(2)
+
+                    success = self.reset_xhci_controller()
+
+                    if success and was_running:
+                        # Give the kernel time to re-enumerate all devices
+                        self.add_message("USB watchdog: waiting 8s for device re-enumeration...")
+                        time.sleep(8)
+                        self.start()
+                        self.add_message("USB watchdog: manager restarted after xHCI reset")
+                    elif not success:
+                        self.add_message(
+                            "USB watchdog: xHCI reset failed — manual intervention may be required"
+                        )
+                        if was_running:
+                            self.start()
+
+                    all_errored_since = None
+            else:
+                if all_errored_since is not None:
+                    self.add_message(
+                        "USB watchdog: devices recovered — cancelling reset countdown"
+                    )
+                all_errored_since = None
+
+    # -------------------------------------------------------------------------
+    # Serial / UDP core logic (unchanged)
+    # -------------------------------------------------------------------------
 
     def wait_for_serial_open_slot(self):
         spacing = max(0.0, float(self.serial_open_spacing_seconds))
@@ -338,7 +481,18 @@ class DCSBIOSWebManager:
     def open_serial_port(self, device: DeviceConfig):
         if not self.wait_for_serial_open_slot():
             raise RuntimeError("Manager stopped before serial port open")
-        return serial.Serial(device.port, device.baudrate, timeout=0.1)
+        ser = serial.Serial(device.port, device.baudrate, timeout=0.1)
+        try:
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+        except:
+            pass
+        return ser
+
+    def _retry_delay(self, consecutive_failures: int) -> float:
+        if consecutive_failures <= 1:
+            return self.reconnect_delay_seconds
+        return min(self.reconnect_delay_seconds * (2 ** (consecutive_failures - 1)), 60)
 
     def setup_udp(self):
         try:
@@ -363,12 +517,14 @@ class DCSBIOSWebManager:
         ser = None
         device.status = "Connecting"
         consecutive_failures = 0
+        port_missing_reported = False
 
         while self.running:
             try:
                 if ser is None or not ser.is_open:
                     ser = self.open_serial_port(device)
                     consecutive_failures = 0
+                    port_missing_reported = False
                     device.status = "Connected"
                     self.add_message(f"{device.name} connected on {device.port}")
 
@@ -397,15 +553,17 @@ class DCSBIOSWebManager:
                     except:
                         pass
                 ser = None
-                if consecutive_failures >= self.max_reconnect_attempts:
-                    self.add_message(
-                        f"{device.name} connection failed after {self.max_reconnect_attempts} attempts ({e}). Giving up."
-                    )
-                    break
-                self.add_message(
-                    f"{device.name} error ({e}). Reconnect attempt {consecutive_failures}/{self.max_reconnect_attempts} in {self.reconnect_delay_seconds}s"
-                )
-                time.sleep(self.reconnect_delay_seconds)
+
+                delay = self._retry_delay(consecutive_failures)
+                is_enoint = isinstance(e, OSError) and getattr(e, 'errno', None) == 2
+                if is_enoint:
+                    if not port_missing_reported:
+                        self.add_message(f"{device.name} port {device.port} missing — retrying when available")
+                        port_missing_reported = True
+                else:
+                    port_missing_reported = False
+                    self.add_message(f"{device.name} error ({e}). Retry in {delay}s")
+                time.sleep(delay)
             except Exception as e:
                 device.status = "Error"
                 consecutive_failures += 1
@@ -415,15 +573,10 @@ class DCSBIOSWebManager:
                     except:
                         pass
                 ser = None
-                if consecutive_failures >= self.max_reconnect_attempts:
-                    self.add_message(
-                        f"{device.name} unexpected serial error after {self.max_reconnect_attempts} attempts ({e}). Giving up."
-                    )
-                    break
-                self.add_message(
-                    f"{device.name} unexpected serial error ({e}). Reconnect attempt {consecutive_failures}/{self.max_reconnect_attempts} in {self.reconnect_delay_seconds}s"
-                )
-                time.sleep(self.reconnect_delay_seconds)
+
+                delay = self._retry_delay(consecutive_failures)
+                self.add_message(f"{device.name} unexpected error ({e}). Retry in {delay}s")
+                time.sleep(delay)
 
         if ser and ser.is_open:
             try:
@@ -443,7 +596,8 @@ class DCSBIOSWebManager:
                     "port": None,
                     "device": device,
                     "failures": 0,
-                    "next_retry": 0.0
+                    "next_retry": 0.0,
+                    "port_missing_reported": False
                 })
 
         while self.running:
@@ -456,9 +610,6 @@ class DCSBIOSWebManager:
                 if ser and ser.is_open:
                     continue
 
-                if entry["failures"] >= self.max_reconnect_attempts:
-                    continue
-
                 if now < entry["next_retry"]:
                     continue
 
@@ -466,20 +617,22 @@ class DCSBIOSWebManager:
                     entry["port"] = self.open_serial_port(device)
                     entry["failures"] = 0
                     entry["next_retry"] = 0.0
+                    entry["port_missing_reported"] = False
                     device.status = "Connected"
                     self.add_message(f"Opened {device.name} for UDP forwarding")
                 except Exception as e:
                     entry["failures"] += 1
                     device.status = "Error"
-                    entry["next_retry"] = now + self.reconnect_delay_seconds
-                    if entry["failures"] >= self.max_reconnect_attempts:
-                        self.add_message(
-                            f"Could not open {device.name} after {self.max_reconnect_attempts} attempts ({e}). Giving up."
-                        )
+                    delay = self._retry_delay(entry["failures"])
+                    entry["next_retry"] = now + delay
+                    is_enoint = isinstance(e, OSError) and getattr(e, 'errno', None) == 2
+                    if is_enoint:
+                        if not entry["port_missing_reported"]:
+                            self.add_message(f"{device.name} port {device.port} missing — retrying when available")
+                            entry["port_missing_reported"] = True
                     else:
-                        self.add_message(
-                            f"Could not open {device.name} ({e}). Reconnect attempt {entry['failures']}/{self.max_reconnect_attempts} in {self.reconnect_delay_seconds}s"
-                        )
+                        entry["port_missing_reported"] = False
+                        self.add_message(f"Could not open {device.name} ({e}). Retry in {delay}s")
 
             try:
                 data, addr = self.udp_sock.recvfrom(1024)
@@ -506,15 +659,11 @@ class DCSBIOSWebManager:
                             entry["port"] = None
                             entry["failures"] += 1
                             device.status = "Error"
-                            entry["next_retry"] = time.time() + self.reconnect_delay_seconds
-                            if entry["failures"] >= self.max_reconnect_attempts:
-                                self.add_message(
-                                    f"UDP forwarding failed for {device.name} after {self.max_reconnect_attempts} attempts ({e}). Giving up."
-                                )
-                            else:
-                                self.add_message(
-                                    f"UDP forwarding error on {device.name} ({e}). Reconnect attempt {entry['failures']}/{self.max_reconnect_attempts} in {self.reconnect_delay_seconds}s"
-                                )
+                            delay = self._retry_delay(entry["failures"])
+                            entry["next_retry"] = time.time() + delay
+                            self.add_message(
+                                f"UDP forwarding error on {device.name} ({e}). Retry in {delay}s"
+                            )
 
             except socket.timeout:
                 continue
@@ -718,6 +867,10 @@ def api_status():
         'serial_open_spacing_seconds': manager.serial_open_spacing_seconds,
         'low_voltage_event_logging': manager.low_voltage_event_logging,
         'serial_input_monitoring': manager.serial_input_monitoring,
+        'xhci_watchdog_enabled': manager.xhci_watchdog_enabled,
+        'xhci_watchdog_error_threshold': manager.xhci_watchdog_error_threshold,
+        'xhci_reset_count': manager.xhci_reset_count,
+        'xhci_last_reset_at': manager.xhci_last_reset_at,
         'devices': [d.to_dict() for d in manager.devices],
         'messages': manager.status_messages[-20:],
         'system': {
@@ -863,6 +1016,49 @@ def api_set_reconnect_settings():
     )
     return jsonify({'success': True})
 
+@app.route('/api/settings/xhci_watchdog', methods=['POST'])
+def api_set_xhci_watchdog():
+    data = request.json
+    enabled = data.get('enabled')
+    threshold = data.get('error_threshold')
+
+    if enabled is not None:
+        manager.xhci_watchdog_enabled = bool(enabled)
+
+    if threshold is not None:
+        if not isinstance(threshold, int) or threshold < 60 or threshold > 3600:
+            return jsonify({'success': False, 'error': 'Threshold must be between 60 and 3600 seconds'})
+        manager.xhci_watchdog_error_threshold = threshold
+
+    manager.save_config()
+    manager.add_message(
+        f"USB watchdog: {'enabled' if manager.xhci_watchdog_enabled else 'disabled'}, "
+        f"threshold: {manager.xhci_watchdog_error_threshold}s"
+    )
+    return jsonify({'success': True})
+
+@app.route('/api/xhci_reset', methods=['POST'])
+def api_xhci_reset():
+    """Manual xHCI reset endpoint — stops manager, resets, restarts."""
+    was_running = manager.running
+
+    def worker():
+        if was_running:
+            manager.stop()
+            time.sleep(2)
+        success = manager.reset_xhci_controller()
+        if success:
+            time.sleep(8)
+            if was_running:
+                manager.start()
+                manager.add_message("Manager restarted after manual xHCI reset")
+        else:
+            if was_running:
+                manager.start()
+
+    threading.Thread(target=worker, daemon=True).start()
+    return jsonify({'success': True, 'message': 'xHCI reset initiated'})
+
 @app.route('/api/settings/schedule_reboot', methods=['POST'])
 def api_schedule_reboot():
     data = request.json
@@ -991,6 +1187,7 @@ def api_list_ports():
 
     configured_ports = {device.port for device in manager.devices}
 
+    seen_targets = set()
     for port in all_ports:
         status = "configured" if port in configured_ports else "available"
         info = get_port_info(port)
@@ -999,6 +1196,27 @@ def api_list_ports():
             'info': info,
             'status': status
         })
+        seen_targets.add(os.path.realpath(port))
+
+    by_path_dir = '/dev/serial/by-path'
+    if os.path.isdir(by_path_dir):
+        by_path_seen = set()
+        for name in sorted(os.listdir(by_path_dir)):
+            if not name.startswith('pci-') and not name.startswith('platform-'):
+                continue
+            symlink = os.path.join(by_path_dir, name)
+            if not os.path.islink(symlink):
+                continue
+            target = os.path.realpath(symlink)
+            if target in by_path_seen:
+                continue
+            by_path_seen.add(target)
+            status = "configured" if symlink in configured_ports else "available"
+            ports.append({
+                'port': symlink,
+                'info': f"USB port {name} → {os.path.basename(target)}",
+                'status': status
+            })
 
     return jsonify({'ports': ports})
 
