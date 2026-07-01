@@ -95,7 +95,7 @@
 
         .main-grid {
             display: grid;
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: 1fr 320px;
             gap: 20px;
             margin-bottom: 20px;
         }
@@ -121,7 +121,8 @@
         }
 
         .device-list {
-            max-height: 70vh;
+            max-height: calc(100vh - 350px);
+            min-height: 200px;
             overflow-y: auto;
         }
 
@@ -140,6 +141,7 @@
         .device-item:hover {
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             transform: translateY(-2px);
+
         }
 
         .device-info {
@@ -243,20 +245,34 @@
             flex-wrap: wrap;
         }
 
+        .messages-card {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .messages-card h2 {
+            flex-shrink: 0;
+        }
+
         .messages-box {
-            background: #f5f5f5;
-            border: 1px solid #ddd;
+            background: #1a1a2e;
+            border: 1px solid #333;
             border-radius: 5px;
             padding: 15px;
-            max-height: 300px;
+            height: calc(100vh - 620px);
+            min-height: 150px;
             overflow-y: auto;
+            scroll-behavior: smooth;
             font-family: 'Courier New', monospace;
             font-size: 13px;
+            color: #0f0;
+            line-height: 1.5;
         }
 
         .message {
-            margin-bottom: 5px;
-            color: #333;
+            margin-bottom: 4px;
+            color: #0f0;
+            word-break: break-all;
         }
 
         .settings-grid {
@@ -410,6 +426,25 @@
             cursor: not-allowed;
         }
 
+        .port-item.by-path {
+            background: #f0f7ff;
+            border-left: 3px solid #4caf50;
+        }
+
+        .port-item.by-path:hover {
+            background: #e3f2fd;
+        }
+
+        .port-item.by-path.selected {
+            background: #e3f2fd;
+            border-left: 3px solid #2a5298;
+        }
+
+        .badge-stable {
+            background: #4caf50;
+            color: white;
+        }
+
         .badge {
             display: inline-block;
             padding: 2px 6px;
@@ -550,8 +585,8 @@
                         </div>
 
                         <div class="setting-item">
-                            <div class="setting-label">Device Reconnect</div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div class="setting-label">Device Reconnect &amp; Open Pacing</div>
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
                                 <div>
                                     <div class="setting-subheading">Max attempts</div>
                                     <input type="number" id="reconnectAttemptsInput" min="1" max="20" placeholder="Max attempts" value="5">
@@ -560,7 +595,12 @@
                                     <div class="setting-subheading">Delay</div>
                                     <input type="number" id="reconnectDelayInput" min="1" max="60" placeholder="Delay (seconds)" value="3">
                                 </div>
+                                <div>
+                                    <div class="setting-subheading">Open spacing</div>
+                                    <input type="number" id="serialOpenSpacingInput" min="0" max="10" step="0.1" placeholder="Spacing (seconds)" value="0.5">
+                                </div>
                             </div>
+                            <div style="margin-top: 8px; font-size: 12px; color: #666;">Use a small open spacing to stagger startup and reconnect port opens. Set to 0 to disable pacing.</div>
                             <button class="btn-primary btn-small" style="margin-top: 8px;" id="saveReconnectBtn">Save</button>
                         </div>
 
@@ -570,6 +610,44 @@
                                 <input type="checkbox" id="serialInputMonitoringToggle">
                                 <span class="slider"></span>
                             </label>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="setting-label">Low Voltage Event Logging</div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="lowVoltageLoggingToggle">
+                                <span class="slider"></span>
+                            </label>
+                            <div style="margin-top: 8px; font-size: 12px; color: #666;">When enabled, newly detected low-voltage events are added to the status log with timestamps.</div>
+                            <div id="lastLowVoltageText" style="margin-top: 8px; font-size: 12px; color: #666;">Last low voltage detected: Never</div>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="setting-label">USB xHCI Watchdog</div>
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="xhciWatchdogToggle">
+                                    <span class="slider"></span>
+                                </label>
+                                <span id="xhciWatchdogStatus" style="font-size: 13px; color: #666;">Enabled</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+                                <div>
+                                    <div class="setting-subheading">Check interval (seconds)</div>
+                                    <input type="number" id="xhciCheckIntervalInput" min="15" max="300" placeholder="60" value="60">
+                                </div>
+                                <div>
+                                    <div class="setting-subheading">Error threshold (seconds)</div>
+                                    <input type="number" id="xhciErrorThresholdInput" min="60" max="3600" placeholder="300" value="300">
+                                </div>
+                            </div>
+                            <div style="margin-top: 8px; font-size: 12px; color: #666;">Resets the USB controller if all devices are in error state for longer than the threshold.</div>
+                            <button class="btn-primary btn-small" style="margin-top: 8px;" id="saveXhciWatchdogBtn">Save</button>
+                            <div id="xhciWatchdogInfo" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #eee; font-size: 12px; color: #666;">
+                                <div>Total resets this session: <span id="xhciResetCount">0</span></div>
+                                <div>Last reset: <span id="xhciLastReset">Never</span></div>
+                            </div>
+                            <button class="btn-warning btn-small" style="margin-top: 8px;" id="xhciResetBtn">Reset USB Controller</button>
                         </div>
                     </div>
                 </div>
@@ -593,7 +671,7 @@
             </div>
         </div>
 
-        <div class="card">
+        <div class="card messages-card">
             <h2>📊 Status Messages</h2>
             <div class="messages-box" id="messagesBox">
                 <div class="loading">Loading messages...</div>
@@ -609,6 +687,10 @@
                 <label>Select Port:</label>
                 <div class="port-list" id="portList">
                     <div class="loading">Loading ports...</div>
+                </div>
+                <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center;">
+                    <input type="text" id="customPortInput" placeholder="Or type a custom path (e.g. /dev/serial/by-path/...)" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px;">
+                    <button class="btn-secondary" id="useCustomPortBtn" style="white-space: nowrap;">Use</button>
                 </div>
             </div>
             <div class="form-group">
@@ -650,6 +732,7 @@
         let selectedPort = null;
         let editMode = null;
         let updateInterval = null;
+        let lastMessageCount = 0;
         let isInputActive = false;  // Flag to track if any input field is active
         let clientLogBuffer = []; // Array to store log entries for client-side download
         let lastMessageTimestamp = null; // Track the timestamp of the last message received
@@ -660,8 +743,40 @@
             udpPort: 5010, // Default UDP port for multicast
             multicastGroup: '239.255.50.10', // Default multicast group
             reconnectAttempts: 5, // Default reconnect attempts per device
-            reconnectDelay: 3 // Default reconnect delay (seconds)
+            reconnectDelay: 3, // Default reconnect delay (seconds)
+            serialOpenSpacing: 0.5 // Delay between serial open attempts
         };
+
+        function formatTimestampDisplay(timestamp) {
+            if (!timestamp) {
+                return 'Never';
+            }
+
+            const parsed = new Date(timestamp);
+            if (Number.isNaN(parsed.getTime())) {
+                return timestamp;
+            }
+
+            return parsed.toLocaleString();
+        }
+
+        function updatePowerIndicators(power) {
+            const lastLowVoltageText = document.getElementById('lastLowVoltageText');
+            const lowVoltageLoggingToggle = document.getElementById('lowVoltageLoggingToggle');
+
+            if (lastLowVoltageText) {
+                const lastDetected = power && power.last_low_voltage_detected_at
+                    ? formatTimestampDisplay(power.last_low_voltage_detected_at)
+                    : 'Never';
+                lastLowVoltageText.textContent = `Last low voltage detected: ${lastDetected}`;
+            }
+
+            if (lowVoltageLoggingToggle) {
+                lowVoltageLoggingToggle.checked = Boolean(power && power.low_voltage_event_logging);
+            }
+
+            renderPowerWarning(power);
+        }
 
         function renderPowerWarning(power) {
             const banner = document.getElementById('powerWarning');
@@ -704,7 +819,16 @@
                 return;
             }
 
-            textEl.textContent = `⚠️ ${messages.join(' • ')}. Check Pi power/thermals.`;
+            const details = [];
+            if (power.last_low_voltage_detected_at) {
+                details.push(`Last detected: ${formatTimestampDisplay(power.last_low_voltage_detected_at)}`);
+            }
+            if (power.low_voltage_event_logging) {
+                details.push('event logging enabled');
+            }
+
+            const detailText = details.length > 0 ? ` ${details.join(' • ')}.` : '';
+            textEl.textContent = `⚠️ ${messages.join(' • ')}. Check Pi power/thermals.${detailText}`;
             banner.style.display = 'flex';
             const activeNow = Boolean(power.undervoltage_now || power.throttled_now);
             banner.classList.toggle('active', activeNow);
@@ -756,6 +880,9 @@
                 if (!document.getElementById('reconnectDelayInput').matches(':focus')) {
                     document.getElementById('reconnectDelayInput').value = data.reconnect_delay_seconds || 3;
                 }
+                if (!document.getElementById('serialOpenSpacingInput').matches(':focus')) {
+                    document.getElementById('serialOpenSpacingInput').value = data.serial_open_spacing_seconds ?? 0.5;
+                }
 
                 // Update system information
                 if (data.system) {
@@ -790,10 +917,10 @@
                     } else {
                         document.getElementById('memoryUsage').textContent = 'N/A';
                     }
-                    renderPowerWarning(data.system.power);
+                    updatePowerIndicators(data.system.power);
                 } else {
                     console.log('No system data in response'); // Debug
-                    renderPowerWarning(null);
+                    updatePowerIndicators(null);
                 }
 
                 // Update scheduled reboot
@@ -853,6 +980,20 @@
 
                 // Update serial input monitoring status
                 document.getElementById('serialInputMonitoringToggle').checked = data.serial_input_monitoring;
+
+                // Update USB watchdog settings
+                document.getElementById('xhciWatchdogToggle').checked = data.xhci_watchdog_enabled;
+                document.getElementById('xhciWatchdogStatus').textContent = data.xhci_watchdog_enabled ? 'Enabled' : 'Disabled';
+                if (!document.getElementById('xhciCheckIntervalInput').matches(':focus')) {
+                    document.getElementById('xhciCheckIntervalInput').value = data.xhci_watchdog_check_interval || 60;
+                }
+                if (!document.getElementById('xhciErrorThresholdInput').matches(':focus')) {
+                    document.getElementById('xhciErrorThresholdInput').value = data.xhci_watchdog_error_threshold || 300;
+                }
+                document.getElementById('xhciResetCount').textContent = data.xhci_reset_count || 0;
+                document.getElementById('xhciLastReset').textContent = data.xhci_last_reset_at
+                    ? formatTimestampDisplay(data.xhci_last_reset_at)
+                    : 'Never';
 
                 // Update messages - add them to the client log buffer immediately
                 // Add new messages to client log buffer if they're not already there
@@ -914,6 +1055,9 @@
                 const data = await response.json();
                 if (data.success) {
                     await updateStatus();
+                    if (data.restarted) {
+                        alert('Device deleted. The manager was restarted to apply the change safely.');
+                    }
                 } else {
                     alert(data.error);
                 }
@@ -948,15 +1092,24 @@
             if (portsData.ports.length === 0) {
                 portList.innerHTML = '<div class="loading">No serial ports detected</div>';
             } else {
-                portList.innerHTML = portsData.ports.map(port => `
-                    <div class="port-item ${port.port === device.port ? 'selected' : ''} ${port.status === 'configured' && port.port !== device.port ? 'configured' : ''}"
-                         onclick="selectPort('${port.port}', ${port.status === 'configured' && port.port !== device.port})">
-                        <strong>${port.port}</strong>
-                        <span class="badge badge-${port.status}">${port.status.toUpperCase()}</span>
-                        <br>
-                        <small>${port.info}</small>
-                    </div>
-                `).join('');
+                portList.innerHTML = portsData.ports.map(port => {
+                    const isByPath = port.port.includes('/by-path/');
+                    const badgeClass = port.status === 'configured' ? 'configured' : (isByPath ? 'stable' : 'available');
+                    const itemClass = [
+                        port.port === device.port ? 'selected' : '',
+                        port.status === 'configured' && port.port !== device.port ? 'configured' : '',
+                        isByPath ? 'by-path' : ''
+                    ].filter(Boolean).join(' ');
+                    return `
+                        <div class="port-item ${itemClass}"
+                             onclick="selectPort('${port.port}', ${port.status === 'configured' && port.port !== device.port})">
+                            <strong>${port.port}</strong>
+                            <span class="badge badge-${badgeClass}">${port.status.toUpperCase()}${isByPath ? ' • STABLE' : ''}</span>
+                            <br>
+                            <small>${port.info}</small>
+                        </div>
+                    `;
+                }).join('');
             }
 
             // Pre-fill form with current device data
@@ -983,15 +1136,23 @@
             if (data.ports.length === 0) {
                 portList.innerHTML = '<div class="loading">No serial ports detected</div>';
             } else {
-                portList.innerHTML = data.ports.map(port => `
-                    <div class="port-item ${port.status === 'configured' ? 'configured' : ''}"
-                         onclick="selectPort('${port.port}', ${port.status === 'configured'})">
-                        <strong>${port.port}</strong>
-                        <span class="badge badge-${port.status}">${port.status.toUpperCase()}</span>
-                        <br>
-                        <small>${port.info}</small>
-                    </div>
-                `).join('');
+                portList.innerHTML = data.ports.map(port => {
+                    const isByPath = port.port.includes('/by-path/');
+                    const badgeClass = port.status === 'configured' ? 'configured' : (isByPath ? 'stable' : 'available');
+                    const itemClass = [
+                        port.status === 'configured' ? 'configured' : '',
+                        isByPath ? 'by-path' : ''
+                    ].filter(Boolean).join(' ');
+                    return `
+                        <div class="port-item ${itemClass}"
+                             onclick="selectPort('${port.port}', ${port.status === 'configured'})">
+                            <strong>${port.port}</strong>
+                            <span class="badge badge-${badgeClass}">${port.status.toUpperCase()}${isByPath ? ' • STABLE' : ''}</span>
+                            <br>
+                            <small>${port.info}</small>
+                        </div>
+                    `;
+                }).join('');
             }
 
             selectedPort = null;
@@ -1001,11 +1162,28 @@
             if (configured) return;
 
             selectedPort = port;
+            document.getElementById('customPortInput').value = '';
             document.querySelectorAll('.port-item').forEach(item => {
                 item.classList.remove('selected');
             });
             event.currentTarget.classList.add('selected');
         }
+
+        document.getElementById('useCustomPortBtn').addEventListener('click', () => {
+            const customPath = document.getElementById('customPortInput').value.trim();
+            if (customPath) {
+                selectedPort = customPath;
+                document.querySelectorAll('.port-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+            }
+        });
+
+        document.getElementById('customPortInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('useCustomPortBtn').click();
+            }
+        });
 
         document.getElementById('cancelAddBtn').addEventListener('click', () => {
             document.getElementById('addDeviceModal').style.display = 'none';
@@ -1016,7 +1194,14 @@
             const baudrate = parseInt(document.getElementById('baudrateInput').value);
 
             if (!selectedPort) {
-                alert('Please select a port');
+                const customPath = document.getElementById('customPortInput').value.trim();
+                if (customPath) {
+                    selectedPort = customPath;
+                }
+            }
+
+            if (!selectedPort) {
+                alert('Please select a port or enter a custom path');
                 return;
             }
 
@@ -1154,6 +1339,7 @@
         document.getElementById('saveReconnectBtn').addEventListener('click', async () => {
             const attempts = parseInt(document.getElementById('reconnectAttemptsInput').value);
             const delay = parseInt(document.getElementById('reconnectDelayInput').value);
+            const spacing = parseFloat(document.getElementById('serialOpenSpacingInput').value);
 
             if (!attempts || attempts < 1 || attempts > 20) {
                 alert('Please enter valid reconnect attempts (1-20)');
@@ -1165,12 +1351,18 @@
                 return;
             }
 
+            if (Number.isNaN(spacing) || spacing < 0 || spacing > 10) {
+                alert('Please enter valid serial open spacing in seconds (0-10)');
+                return;
+            }
+
             const response = await fetch('/api/settings/reconnect', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     max_reconnect_attempts: attempts,
-                    reconnect_delay_seconds: delay
+                    reconnect_delay_seconds: delay,
+                    serial_open_spacing_seconds: spacing
                 })
             });
 
@@ -1178,8 +1370,9 @@
             if (data.success) {
                 config.reconnectAttempts = attempts;
                 config.reconnectDelay = delay;
+                config.serialOpenSpacing = spacing;
                 await updateStatus();
-                alert(`Reconnect settings saved: ${attempts} attempts, ${delay}s delay`);
+                alert(`Reconnect settings saved: ${attempts} attempts, ${delay}s delay, ${spacing}s open spacing`);
             } else {
                 alert('Error: ' + data.error);
             }
@@ -1205,6 +1398,85 @@
                 console.error('Error toggling serial input monitoring:', data.error);
                 // Revert the toggle to the previous state
                 document.getElementById('serialInputMonitoringToggle').checked = !isChecked;
+            }
+        });
+
+        document.getElementById('lowVoltageLoggingToggle').addEventListener('change', async () => {
+            const isChecked = document.getElementById('lowVoltageLoggingToggle').checked;
+            const response = await fetch('/api/settings/low_voltage_logging', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: isChecked })
+            });
+            const data = await response.json();
+            if (data.success) {
+                await updateStatus();
+            } else {
+                console.error('Error toggling low voltage logging:', data.error);
+                document.getElementById('lowVoltageLoggingToggle').checked = !isChecked;
+            }
+        });
+
+        document.getElementById('xhciWatchdogToggle').addEventListener('change', async () => {
+            const isChecked = document.getElementById('xhciWatchdogToggle').checked;
+            const response = await fetch('/api/settings/xhci_watchdog', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: isChecked })
+            });
+            const data = await response.json();
+            if (data.success) {
+                await updateStatus();
+            } else {
+                console.error('Error toggling xHCI watchdog:', data.error);
+                document.getElementById('xhciWatchdogToggle').checked = !isChecked;
+            }
+        });
+
+        document.getElementById('saveXhciWatchdogBtn').addEventListener('click', async () => {
+            const interval = parseInt(document.getElementById('xhciCheckIntervalInput').value);
+            const threshold = parseInt(document.getElementById('xhciErrorThresholdInput').value);
+
+            if (!interval || interval < 15 || interval > 300) {
+                alert('Please enter a valid check interval (15-300 seconds)');
+                return;
+            }
+
+            if (!threshold || threshold < 60 || threshold > 3600) {
+                alert('Please enter a valid error threshold (60-3600 seconds)');
+                return;
+            }
+
+            const response = await fetch('/api/settings/xhci_watchdog', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    check_interval: interval,
+                    error_threshold: threshold
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                await updateStatus();
+                alert(`USB watchdog settings saved: ${interval}s check interval, ${threshold}s error threshold`);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+
+        document.getElementById('xhciResetBtn').addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to reset the USB controller? This will briefly disconnect all USB devices.')) {
+                return;
+            }
+
+            const response = await fetch('/api/xhci_reset', { method: 'POST' });
+            const data = await response.json();
+            if (data.success) {
+                alert('USB controller reset initiated. Devices will reconnect shortly.');
+                await updateStatus();
+            } else {
+                alert('Error: ' + (data.error || 'Reset failed'));
             }
         });
 
@@ -1287,20 +1559,48 @@
             await updateStatus();
         });
 
+        async function triggerSystemPowerAction(url, successMessage) {
+            try {
+                const response = await fetch(url, { method: 'POST' });
+                let data = null;
+
+                try {
+                    data = await response.json();
+                } catch (error) {
+                    data = null;
+                }
+
+                if (!response.ok || !data || !data.success) {
+                    const errorMessage = data && data.error
+                        ? data.error
+                        : `Request failed with status ${response.status}`;
+                    throw new Error(errorMessage);
+                }
+
+                alert(successMessage);
+            } catch (error) {
+                alert(`System action failed: ${error.message}`);
+            }
+        }
+
 
         // Reboot
         document.getElementById('rebootBtn').addEventListener('click', async () => {
             if (confirm('Are you sure you want to reboot the Raspberry Pi?')) {
-                await fetch('/api/reboot', { method: 'POST' });
-                alert('Rebooting... The page will be unavailable for a few minutes.');
+                await triggerSystemPowerAction(
+                    '/api/reboot',
+                    'Rebooting... The page will be unavailable for a few minutes.'
+                );
             }
         });
 
         // Shutdown
         document.getElementById('shutdownBtn').addEventListener('click', async () => {
             if (confirm('Are you sure you want to shutdown the Raspberry Pi?')) {
-                await fetch('/api/shutdown', { method: 'POST' });
-                alert('Shutting down... The page will be unavailable.');
+                await triggerSystemPowerAction(
+                    '/api/shutdown',
+                    'Shutting down... The page will be unavailable.'
+                );
             }
         });
 
@@ -1410,21 +1710,44 @@
         document.getElementById('reconnectDelayInput').addEventListener('focus', () => setInputActive(true));
         document.getElementById('reconnectDelayInput').addEventListener('blur', () => setInputActive(false));
 
+        document.getElementById('serialOpenSpacingInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('serialOpenSpacingInput').addEventListener('blur', () => setInputActive(false));
+
+        document.getElementById('xhciCheckIntervalInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('xhciCheckIntervalInput').addEventListener('blur', () => setInputActive(false));
+
+        document.getElementById('xhciErrorThresholdInput').addEventListener('focus', () => setInputActive(true));
+        document.getElementById('xhciErrorThresholdInput').addEventListener('blur', () => setInputActive(false));
+
         // Separate update functions for different sections
         async function updateStatusMessages() {
-            // Only update status messages part of the UI
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
                 
-                // Update messages only (allow this even when input is active since it shouldn't interfere)
                 const messagesBox = document.getElementById('messagesBox');
                 if (data.messages.length === 0) {
                     messagesBox.innerHTML = '<div class="message">No messages yet.</div>';
+                    lastMessageCount = 0;
                 } else {
-                    messagesBox.innerHTML = data.messages.map(msg =>
-                        `<div class="message">${msg}</div>`
-                    ).join('');
+                    // Only append new messages instead of re-rendering everything
+                    if (lastMessageCount === 0 || data.messages.length < lastMessageCount) {
+                        // First load or server buffer rotated — full render
+                        messagesBox.innerHTML = data.messages.map(msg =>
+                            `<div class="message">${msg}</div>`
+                        ).join('');
+                    } else if (data.messages.length > lastMessageCount) {
+                        // Append only new messages
+                        const newMessages = data.messages.slice(lastMessageCount);
+                        const fragment = document.createDocumentFragment();
+                        const tempDiv = document.createElement('div');
+                        newMessages.forEach(msg => {
+                            tempDiv.innerHTML = `<div class="message">${msg}</div>`;
+                            fragment.appendChild(tempDiv.firstChild);
+                        });
+                        messagesBox.appendChild(fragment);
+                    }
+                    lastMessageCount = data.messages.length;
                     messagesBox.scrollTop = messagesBox.scrollHeight;
                 }
             } catch (error) {
@@ -1490,6 +1813,9 @@
                 if (!document.getElementById('reconnectDelayInput').matches(':focus')) {
                     document.getElementById('reconnectDelayInput').value = data.reconnect_delay_seconds || 3;
                 }
+                if (!document.getElementById('serialOpenSpacingInput').matches(':focus')) {
+                    document.getElementById('serialOpenSpacingInput').value = data.serial_open_spacing_seconds ?? 0.5;
+                }
 
                 // Update system information
                 if (data.system) {
@@ -1507,14 +1833,28 @@
                     } else {
                         document.getElementById('memoryUsage').textContent = 'N/A';
                     }
-                    renderPowerWarning(data.system.power);
+                    updatePowerIndicators(data.system.power);
                 } else {
                     console.log('No system data in response'); // Debug
-                    renderPowerWarning(null);
+                    updatePowerIndicators(null);
                 }
 
                 // Update serial input monitoring status
                 document.getElementById('serialInputMonitoringToggle').checked = data.serial_input_monitoring;
+
+                // Update USB watchdog settings
+                document.getElementById('xhciWatchdogToggle').checked = data.xhci_watchdog_enabled;
+                document.getElementById('xhciWatchdogStatus').textContent = data.xhci_watchdog_enabled ? 'Enabled' : 'Disabled';
+                if (!document.getElementById('xhciCheckIntervalInput').matches(':focus')) {
+                    document.getElementById('xhciCheckIntervalInput').value = data.xhci_watchdog_check_interval || 60;
+                }
+                if (!document.getElementById('xhciErrorThresholdInput').matches(':focus')) {
+                    document.getElementById('xhciErrorThresholdInput').value = data.xhci_watchdog_error_threshold || 300;
+                }
+                document.getElementById('xhciResetCount').textContent = data.xhci_reset_count || 0;
+                document.getElementById('xhciLastReset').textContent = data.xhci_last_reset_at
+                    ? formatTimestampDisplay(data.xhci_last_reset_at)
+                    : 'Never';
 
 
                 // Update scheduled reboot
@@ -1583,10 +1923,10 @@
         // Update main UI less frequently (e.g., every 10 seconds) since it doesn't change as often
         setInterval(updateMainUI, 10000); // Update main UI every 10 seconds
 
-        // Update messages display (UI) every 2 seconds to avoid flickering
-        setInterval(updateStatusMessages, config.updateInterval); // Update messages display every 2 seconds
+        // Update messages display every 3 seconds
+        setInterval(updateStatusMessages, 3000);
 
-        // Update log buffer more frequently for near real-time logging
+        // Update log buffer every 2 seconds
         setInterval(async function() {
             // Only update the log buffer without updating the UI display
             try {
@@ -1602,7 +1942,7 @@
             } catch (error) {
                 console.error('Error updating log buffer:', error);
             }
-        }, 500); // Update log buffer every 0.5 seconds
+        }, 2000);
     </script>
 </body>
 </html>
